@@ -7,8 +7,8 @@ export const fetchInventoryData = async (options?: {
   accessToken?: string;
   usePrivateAPI?: boolean 
 }): Promise<InventoryRecord[]> => {
-  const SHEET_ID = (import.meta as any).env?.VITE_SHEET_ID || APP_CONFIG.DEFAULT_SHEET_ID;
-  const GID = (import.meta as any).env?.VITE_SHEET_GID || APP_CONFIG.DEFAULT_SHEET_GID;
+  const SHEET_ID = import.meta.env.VITE_SHEET_ID || APP_CONFIG.DEFAULT_SHEET_ID;
+  const GID = import.meta.env.VITE_SHEET_GID || APP_CONFIG.DEFAULT_SHEET_GID;
 
   try {
     // --- MODE: Official Google Sheets API v4 (Private or Multi-Tab) ---
@@ -18,7 +18,6 @@ export const fetchInventoryData = async (options?: {
         headers['Authorization'] = `Bearer ${options.accessToken}`;
       }
 
-      // If we have an Access Token, we don't strictly need an API Key for the request
       const queryParams = options.apiKey ? `?key=${options.apiKey}` : '';
       const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${queryParams}`;
       
@@ -39,7 +38,6 @@ export const fetchInventoryData = async (options?: {
       const sheetNames = metaData.sheets.map((s: any) => s.properties.title);
 
       for (const sheetName of sheetNames) {
-        // Skip hidden or system sheets
         if (sheetName.toLowerCase().includes('summary') || sheetName.toLowerCase().includes('config')) continue;
 
         const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/'${sheetName}'!A:Z${queryParams}`;
@@ -58,7 +56,6 @@ export const fetchInventoryData = async (options?: {
     if (!response.ok) throw new Error('Failed to fetch public sheet data');
     
     const csvText = await response.text();
-    // Google returns a login HTML page if the sheet is private
     if (csvText.trim().toLowerCase().startsWith('<!doctype html')) {
       throw new Error('PRIVATE_SHEET_DETECTED: This sheet is not public. Please enable "Secure Sync" in Settings.');
     }
@@ -105,7 +102,6 @@ function transformMatrixToRecords(rows: string[][], sourceSheet: string): Invent
     const row = rows[i];
     const productName = row[1];
     
-    // Clean up product name and skip summary rows
     if (!productName || ['products', 's/n', 'total'].includes(productName.toLowerCase().trim())) continue;
 
     for (let j = 2; j < row.length; j++) {
@@ -134,7 +130,6 @@ function transformMatrixToRecords(rows: string[][], sourceSheet: string): Invent
           currentCount: cleanValue
         });
       } else if (isInbound) {
-        // This is stock entering the main system
         records.push({
           date,
           branchName: 'Logistics/Central',
@@ -144,7 +139,6 @@ function transformMatrixToRecords(rows: string[][], sourceSheet: string): Invent
           currentCount: 0
         });
       } else {
-        // Direct movement to a branch
         records.push({
           date,
           branchName: branchName,
