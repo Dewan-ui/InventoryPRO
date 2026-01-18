@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { ViewType, InventoryRecord } from './types';
 import { fetchInventoryData } from './services/googleSheets';
+import { getInventoryInsights } from './services/aiService';
 import { AppLayout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Inventory } from './components/Inventory';
@@ -25,6 +25,7 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [aiInsights, setAiInsights] = useState<string[] | null>(null);
 
   // Connection Settings
   const [usePrivateAPI, setUsePrivateAPI] = useState(() => localStorage.getItem('inventory_use_private') === 'true');
@@ -58,6 +59,11 @@ const App: React.FC = () => {
       });
       setData(inventory);
       setLastUpdated(new Date());
+
+      // Trigger AI insights generation after a successful data load
+      if (inventory.length > 0) {
+        getInventoryInsights(inventory).then(setAiInsights);
+      }
     } catch (err: any) {
       setError(err.message);
       if (!isSilent) setData([]);
@@ -90,6 +96,7 @@ const App: React.FC = () => {
     setUser(null);
     setIsAuthenticated(false);
     setData([]);
+    setAiInsights(null);
   };
 
   if (!isAuthenticated) return <Auth onLogin={handleLogin} />;
@@ -132,7 +139,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {view === 'dashboard' && <Dashboard data={data} />}
+      {view === 'dashboard' && <Dashboard data={data} insights={aiInsights} />}
       {view === 'inventory' && <Inventory data={data} />}
       {view === 'metrics' && <Metrics data={data} />}
       {view === 'settings' && (

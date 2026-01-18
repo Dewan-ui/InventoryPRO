@@ -1,11 +1,20 @@
-
 import React from 'react';
 import { InventoryRecord, DailyStats } from '../types';
 import { StockVelocityChart, Sparkline } from './Charts';
-import { ArrowUpRight, ArrowDownRight, DollarSign, Package, MapPin, AlertTriangle, RefreshCw } from 'lucide-react';
+import { 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  DollarSign, 
+  Package, 
+  MapPin, 
+  AlertTriangle, 
+  RefreshCw,
+  Sparkles
+} from 'lucide-react';
 
 interface DashboardProps {
   data: InventoryRecord[];
+  insights?: string[] | null;
 }
 
 const KPICard: React.FC<{ 
@@ -37,7 +46,7 @@ const KPICard: React.FC<{
   </div>
 );
 
-export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ data, insights }) => {
   const dailyStatsMap = new Map<string, DailyStats>();
   data.forEach(item => {
     const existing = dailyStatsMap.get(item.date) || { date: item.date, stockIn: 0, stockOut: 0, count: 0 };
@@ -88,6 +97,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
           sparkData={[20, 25, 40, 35, 50, 55, 60]}
         />
       </div>
+
+      {/* AI Powered Insights Section */}
+      {insights && insights.length > 0 && (
+        <div className="bg-indigo-950 rounded-[40px] p-8 lg:p-10 text-white shadow-2xl shadow-indigo-900/20 border border-indigo-900/50 animate-in fade-in zoom-in-95 duration-700">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="p-3 bg-indigo-600/30 rounded-2xl">
+              <Sparkles className="text-indigo-400" size={24} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold tracking-tight">AI-Powered Insights</h3>
+              <p className="text-xs text-indigo-300 font-medium">Real-time analysis by Gemini Pro</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {insights.map((insight, idx) => (
+              <div key={idx} className="bg-white/5 backdrop-blur-md rounded-3xl p-6 border border-white/10 hover:bg-white/10 transition-all duration-300 group">
+                <p className="text-sm leading-relaxed text-indigo-100 italic group-hover:text-white transition-colors">"{insight}"</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
         <div className="xl:col-span-2 bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm">

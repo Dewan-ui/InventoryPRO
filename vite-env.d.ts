@@ -1,5 +1,5 @@
-// Fixed: Removed the reference to 'vite/client' as the type definition file was not found.
-// Local interface definitions for ImportMetaEnv and ImportMeta are used instead to support environment variables.
+// Removed problematic reference to fix "Cannot find type definition file for 'vite/client'"
+// Manual type declarations for Vite environment variables are provided below.
 
 interface ImportMetaEnv {
   readonly VITE_SHEET_ID: string;
@@ -12,7 +12,7 @@ interface ImportMeta {
 
 declare namespace NodeJS {
   interface ProcessEnv {
-    API_KEY: string;
-    NODE_ENV: 'development' | 'production' | 'test';
+    readonly API_KEY: string;
+    readonly NODE_ENV: 'development' | 'production' | 'test';
   }
 }
