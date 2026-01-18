@@ -2,12 +2,10 @@
 import React from 'react';
 import { InventoryRecord, DailyStats } from '../types';
 import { StockVelocityChart, Sparkline } from './Charts';
-import { ArrowUpRight, ArrowDownRight, DollarSign, Package, MapPin, AlertTriangle, RefreshCw, Sparkles, BrainCircuit } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, DollarSign, Package, MapPin, AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface DashboardProps {
   data: InventoryRecord[];
-  aiInsights?: any;
-  isAnalyzing?: boolean;
 }
 
 const KPICard: React.FC<{ 
@@ -39,7 +37,7 @@ const KPICard: React.FC<{
   </div>
 );
 
-export const Dashboard: React.FC<DashboardProps> = ({ data, aiInsights, isAnalyzing }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
   const dailyStatsMap = new Map<string, DailyStats>();
   data.forEach(item => {
     const existing = dailyStatsMap.get(item.date) || { date: item.date, stockIn: 0, stockOut: 0, count: 0 };
@@ -63,7 +61,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, aiInsights, isAnalyz
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-8">
         <div className="space-y-2">
           <h2 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900">Inventory Dashboard</h2>
-          <p className="text-slate-500 font-medium">Overview of stock levels and AI-powered strategy.</p>
+          <p className="text-slate-500 font-medium">Overview of stock levels and movement.</p>
         </div>
       </div>
 
@@ -89,59 +87,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, aiInsights, isAnalyz
           icon={<MapPin size={24} />} 
           sparkData={[20, 25, 40, 35, 50, 55, 60]}
         />
-      </div>
-
-      {/* AI Strategy Section */}
-      <div className="relative group">
-        <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-[42px] blur opacity-10 group-hover:opacity-20 transition duration-1000"></div>
-        <div className="relative bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-600/20">
-              <BrainCircuit size={20} />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">Strategy Insights</h3>
-              <p className="text-xs text-slate-500 font-medium">Gemini-Powered Analysis</p>
-            </div>
-            {isAnalyzing && (
-              <div className="ml-auto flex items-center gap-2 px-3 py-1.5 bg-indigo-50 rounded-full">
-                <RefreshCw size={12} className="text-indigo-600 animate-spin" />
-                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Analyzing...</span>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {aiInsights?.insights ? (
-              aiInsights.insights.map((insight: any, idx: number) => (
-                <div key={idx} className="p-6 rounded-[32px] bg-slate-50/50 border border-slate-100 hover:bg-white hover:shadow-xl hover:shadow-indigo-500/5 transition-all duration-500 group">
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center mb-4 ${
-                    insight.severity === 'high' ? 'bg-rose-100 text-rose-600' : 
-                    insight.severity === 'medium' ? 'bg-amber-100 text-amber-600' : 
-                    'bg-indigo-100 text-indigo-600'
-                  }`}>
-                    <Sparkles size={16} />
-                  </div>
-                  <h4 className="font-bold text-slate-900 mb-2">{insight.title}</h4>
-                  <p className="text-xs text-slate-500 leading-relaxed mb-4">{insight.description}</p>
-                  <span className={`text-[10px] font-black uppercase tracking-widest ${
-                    insight.severity === 'high' ? 'text-rose-600' : 
-                    insight.severity === 'medium' ? 'text-amber-600' : 
-                    'text-indigo-600'
-                  }`}>
-                    {insight.severity} Priority
-                  </span>
-                </div>
-              ))
-            ) : (
-              [1, 2, 3].map((i) => (
-                <div key={i} className="h-40 bg-slate-50 rounded-[32px] animate-pulse flex items-center justify-center">
-                  <BrainCircuit size={24} className="text-slate-200" />
-                </div>
-              ))
-            )}
-          </div>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
