@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ViewType, InventoryRecord } from './types';
 import { fetchInventoryData } from './services/googleSheets';
+import { getInventoryInsights } from './services/aiService';
 import { AppLayout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Inventory } from './components/Inventory';
@@ -25,6 +26,10 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // AI Insights State
+  const [aiInsights, setAiInsights] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Connection Settings
   const [usePrivateAPI, setUsePrivateAPI] = useState(() => localStorage.getItem('inventory_use_private') === 'true');
@@ -58,12 +63,21 @@ const App: React.FC = () => {
       });
       setData(inventory);
       setLastUpdated(new Date());
+
+      // Trigger AI Analysis
+      if (inventory.length > 0) {
+        setIsAnalyzing(true);
+        const insights = await getInventoryInsights(inventory);
+        setAiInsights(insights);
+        setIsAnalyzing(false);
+      }
     } catch (err: any) {
       setError(err.message);
       if (!isSilent) setData([]);
     } finally {
       setLoading(false);
       setIsSyncing(false);
+      setIsAnalyzing(false);
     }
   }, [googleAPIKey, googleAccessToken, usePrivateAPI]);
 
@@ -132,7 +146,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {view === 'dashboard' && <Dashboard data={data} />}
+      {view === 'dashboard' && <Dashboard data={data} aiInsights={aiInsights} isAnalyzing={isAnalyzing} />}
       {view === 'inventory' && <Inventory data={data} />}
       {view === 'metrics' && <Metrics data={data} />}
       {view === 'settings' && (
