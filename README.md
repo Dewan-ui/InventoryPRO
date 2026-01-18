@@ -1,20 +1,25 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+# 📦 Inventory Pro Dashboard
 
-This contains everything you need to run your app locally.
+A high-performance, minimalist inventory management system that syncs in real-time with Google Sheets.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1_amXgHL_fNt2VE2ZJIMFbXX4KQJuZZUd
+## 🚀 Deployment Instructions (Vercel)
 
-## Run Locally
+1. **Connect GitHub**: Import this repository into [Vercel](https://vercel.com).
+2. **Framework Preset**: Select **Vite** (it should be auto-detected).
+3. **Environment Variables**: This is critical for the Google Sheet connection. In Vercel Project Settings, add these two variables:
+   - `VITE_SHEET_ID`: `1-Cx94W5UBqGQRe-75ipAujtOn88vf6a4Ee0TmQpJ1lU`
+   - `VITE_SHEET_GID`: `1507375445`
+4. **Deploy**: Click deploy.
 
-**Prerequisites:**  Node.js
+## 🛠 Tech Stack
+- **Frontend**: React 19 + TypeScript
+- **Styling**: Tailwind CSS
+- **Charts**: Recharts
+- **Icons**: Lucide React
+- **Data Source**: Google Sheets (CSV Export API)
 
+## 🔄 Automatic Updates
+This project is set up with **Continuous Deployment**. Any changes pushed to the `main` branch will automatically trigger a new build on Vercel. 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+To update the dashboard data, simply edit your Google Sheet. The app fetches fresh data every time it is loaded or when the "Sync" button is clicked.
