@@ -1,10 +1,11 @@
 
 import { InventoryRecord } from '../types';
+import { APP_CONFIG } from '../config';
 
-// Use environment variables for production security
-// In Vercel, you would add VITE_SHEET_ID and VITE_SHEET_GID in the project settings
-const SHEET_ID = (import.meta as any).env?.VITE_SHEET_ID || '1-Cx94W5UBqGQRe-75ipAujtOn88vf6a4Ee0TmQpJ1lU';
-const GID = (import.meta as any).env?.VITE_SHEET_GID || '1507375445';
+// Priority 1: Vercel/System Environment Variables
+// Priority 2: The settings in config.ts
+const SHEET_ID = (import.meta as any).env?.VITE_SHEET_ID || APP_CONFIG.DEFAULT_SHEET_ID;
+const GID = (import.meta as any).env?.VITE_SHEET_GID || APP_CONFIG.DEFAULT_SHEET_GID;
 
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
 
@@ -43,8 +44,9 @@ export const fetchInventoryData = async (): Promise<InventoryRecord[]> => {
     
     const csvText = await response.text();
     
+    // Check if we accidentally got an HTML login page (means sheet isn't public)
     if (csvText.trim().toLowerCase().startsWith('<!doctype html') || csvText.includes('<html')) {
-      console.error("DATA ACCESS ERROR: Sheet is not public.");
+      console.error("DATA ACCESS ERROR: Your Google Sheet is likely private. Set 'Anyone with link can view'.");
       return [];
     }
 
