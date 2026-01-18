@@ -2,55 +2,75 @@
 import { InventoryRecord } from '../types';
 import { APP_CONFIG } from '../config';
 
-/**
- * FETCHING MODES:
- * 1. CSV Export (Public): Fast, no API key needed, but sheet MUST be public.
- * 2. Sheets API v4 (Private): Requires API Key. Works with private sheets 
- *    if the sheet is shared with the API Key's service account or restricted correctly.
- */
-
-export const fetchInventoryData = async (options?: { apiKey?: string; usePrivateAPI?: boolean }): Promise<InventoryRecord[]> => {
+export const fetchInventoryData = async (options?: { 
+  apiKey?: string; 
+  accessToken?: string;
+  usePrivateAPI?: boolean 
+}): Promise<InventoryRecord[]> => {
   const SHEET_ID = (import.meta as any).env?.VITE_SHEET_ID || APP_CONFIG.DEFAULT_SHEET_ID;
   const GID = (import.meta as any).env?.VITE_SHEET_GID || APP_CONFIG.DEFAULT_SHEET_GID;
 
   try {
-    // MODE: Official Google Sheets API v4 (JSON)
-    if (options?.usePrivateAPI && options?.apiKey) {
-      const RANGE = 'A:Z'; // Fetch the whole sheet
-      const API_URL = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${options.apiKey}`;
+    // --- MODE: Official Google Sheets API v4 (Private or Multi-Tab) ---
+    if (options?.usePrivateAPI && (options?.apiKey || options?.accessToken)) {
+      const headers: HeadersInit = {};
+      if (options.accessToken) {
+        headers['Authorization'] = `Bearer ${options.accessToken}`;
+      }
+
+      // If we have an Access Token, we don't strictly need an API Key for the request
+      const queryParams = options.apiKey ? `?key=${options.apiKey}` : '';
+      const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${queryParams}`;
       
-      const response = await fetch(API_URL);
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error?.message || 'API Connection Failed');
+      const metaResponse = await fetch(metaUrl, { headers });
+      
+      if (metaResponse.status === 403) {
+        throw new Error('ACCESS_DENIED: The sheet is private. Step 1: Create a Service Account. Step 2: Ask the owner to share the sheet with that email.');
       }
       
-      const data = await response.json();
-      return transformAPIV4(data.values);
+      if (metaResponse.status === 401) {
+        throw new Error('TOKEN_EXPIRED: Your OAuth Access Token has expired. Please refresh it in the Cloud Console.');
+      }
+
+      if (!metaResponse.ok) throw new Error(`Google API Error: ${metaResponse.statusText}`);
+      
+      const metaData = await metaResponse.json();
+      const allRecords: InventoryRecord[] = [];
+      const sheetNames = metaData.sheets.map((s: any) => s.properties.title);
+
+      for (const sheetName of sheetNames) {
+        // Skip hidden or system sheets
+        if (sheetName.toLowerCase().includes('summary') || sheetName.toLowerCase().includes('config')) continue;
+
+        const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/'${sheetName}'!A:Z${queryParams}`;
+        const dataResponse = await fetch(dataUrl, { headers });
+        if (dataResponse.ok) {
+          const data = await dataResponse.json();
+          allRecords.push(...transformMatrixToRecords(data.values, sheetName));
+        }
+      }
+      return allRecords;
     }
 
-    // MODE: CSV Export (Legacy/Public)
+    // --- MODE: Public CSV Export (Fallback) ---
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
     const response = await fetch(CSV_URL);
     if (!response.ok) throw new Error('Failed to fetch public sheet data');
     
     const csvText = await response.text();
-    
-    // Safety check for private sheet HTML response
-    if (csvText.trim().toLowerCase().startsWith('<!doctype html') || csvText.includes('<html')) {
-      throw new Error('ACCESS_DENIED: Sheet is private. Use Secure Sync mode.');
+    // Google returns a login HTML page if the sheet is private
+    if (csvText.trim().toLowerCase().startsWith('<!doctype html')) {
+      throw new Error('PRIVATE_SHEET_DETECTED: This sheet is not public. Please enable "Secure Sync" in Settings.');
     }
 
     const rows = parseCSV(csvText);
-    return transformRowsToRecords(rows);
+    return transformMatrixToRecords(rows, 'Main Hub');
 
   } catch (error: any) {
-    console.error('Data Service Error:', error.message);
+    console.error('Inventory Sync Engine Error:', error.message);
     throw error;
   }
 };
-
-// --- UTILITIES ---
 
 function parseCSV(text: string): string[][] {
   const result: string[][] = [];
@@ -74,34 +94,67 @@ function parseCSV(text: string): string[][] {
   return result;
 }
 
-function transformAPIV4(rows: string[][]): InventoryRecord[] {
-  if (!rows || rows.length < 2) return [];
-  return transformRowsToRecords(rows);
-}
+function transformMatrixToRecords(rows: string[][], sourceSheet: string): InventoryRecord[] {
+  if (!rows || rows.length < 1) return [];
 
-function transformRowsToRecords(rows: string[][]): InventoryRecord[] {
-  const headers = rows[0].map(h => h.toLowerCase().trim());
-  const idx = {
-    date: headers.findIndex(h => h.includes('date')),
-    branch: headers.findIndex(h => h.includes('branch')),
-    device: headers.findIndex(h => h.includes('device') || h.includes('item')),
-    in: headers.findIndex(h => h.includes('stock in') || h.includes('inflow')),
-    out: headers.findIndex(h => h.includes('stock out') || h.includes('outflow')),
-    count: headers.findIndex(h => h.includes('count') || h.includes('current') || h.includes('stock'))
-  };
+  const headers = rows[0];
+  const records: InventoryRecord[] = [];
+  const dateRegex = /(\d{1,2}\/\d{1,2}\/\d{2,4})/;
 
-  const cleanNum = (val: string) => {
-    if (!val) return 0;
-    const sanitized = String(val).replace(/[^\d.-]/g, '');
-    return parseInt(sanitized) || 0;
-  };
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    const productName = row[1];
+    
+    // Clean up product name and skip summary rows
+    if (!productName || ['products', 's/n', 'total'].includes(productName.toLowerCase().trim())) continue;
 
-  return rows.slice(1).map(values => ({
-    date: idx.date !== -1 ? values[idx.date] : '',
-    branchName: idx.branch !== -1 ? values[idx.branch] : 'Unknown',
-    deviceName: idx.device !== -1 ? values[idx.device] : 'Unknown',
-    stockIn: idx.in !== -1 ? cleanNum(values[idx.in]) : 0,
-    stockOut: idx.out !== -1 ? cleanNum(values[idx.out]) : 0,
-    currentCount: idx.count !== -1 ? cleanNum(values[idx.count]) : 0,
-  })).filter(record => record.branchName && record.branchName !== 'Unknown');
+    for (let j = 2; j < row.length; j++) {
+      const cellValue = row[j];
+      if (!cellValue || cellValue === '-' || cellValue === '0' || cellValue === '') continue;
+
+      const header = headers[j] || '';
+      const dateMatch = header.match(dateRegex);
+      const date = dateMatch ? dateMatch[1] : 'Recent';
+      
+      const cleanValue = parseInt(cellValue.replace(/[^\d]/g, '')) || 0;
+
+      const isClosingBalance = header.toLowerCase().includes('closing balance');
+      const isInbound = header.toLowerCase().includes('inbound');
+      
+      let branchName = header.replace(dateRegex, '').replace(/[()]/g, '').trim();
+      if (!branchName || branchName === '') branchName = sourceSheet;
+
+      if (isClosingBalance) {
+        records.push({
+          date,
+          branchName: sourceSheet,
+          deviceName: productName,
+          stockIn: 0,
+          stockOut: 0,
+          currentCount: cleanValue
+        });
+      } else if (isInbound) {
+        // This is stock entering the main system
+        records.push({
+          date,
+          branchName: 'Logistics/Central',
+          deviceName: productName,
+          stockIn: cleanValue,
+          stockOut: 0,
+          currentCount: 0
+        });
+      } else {
+        // Direct movement to a branch
+        records.push({
+          date,
+          branchName: branchName,
+          deviceName: productName,
+          stockIn: cleanValue,
+          stockOut: 0,
+          currentCount: cleanValue
+        });
+      }
+    }
+  }
+  return records;
 }

@@ -10,7 +10,9 @@ import {
   Search,
   ChevronRight,
   RefreshCw,
-  X
+  X,
+  Menu,
+  ChevronLeft
 } from 'lucide-react';
 import { ViewType } from '../types';
 
@@ -32,16 +34,16 @@ const SidebarLink: React.FC<{
 }> = ({ icon, label, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group w-full ${
+    className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 group w-full ${
       active 
-        ? 'bg-indigo-50 text-indigo-600 font-medium shadow-sm' 
+        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-semibold' 
         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
     }`}
   >
-    <span className={`transition-transform duration-200 ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
+    <span className={`transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
       {icon}
     </span>
-    <span className="text-sm">{label}</span>
+    <span className="text-sm whitespace-nowrap">{label}</span>
   </button>
 );
 
@@ -55,136 +57,173 @@ export const AppLayout: React.FC<LayoutProps> = ({
   lastUpdated
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const navigationItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    { id: 'inventory', label: 'Inventory', icon: <Package size={20} /> },
+    { id: 'metrics', label: 'Stats', icon: <BarChart3 size={20} /> },
+    { id: 'settings', label: 'Settings', icon: <Settings size={20} /> },
+  ];
+
+  const handleViewChange = (view: ViewType) => {
+    setView(view);
+    setIsSidebarOpen(false);
+  };
 
   return (
     <div className="flex min-h-screen bg-[#fafafa]">
-      {/* Sidebar */}
-      <aside className="w-64 border-r border-slate-200 bg-white flex flex-col sticky top-0 h-screen z-40">
-        <div className="p-8">
-          <div className="flex items-center gap-2 mb-10">
-            <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-600/30">I</div>
-            <h1 className="text-xl font-bold tracking-tight">Inventory<span className="text-indigo-600">Pro</span></h1>
+      {/* Sidebar Drawer - Mobile/Tablet Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 lg:hidden animate-in fade-in duration-300"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-200 transform transition-transform duration-500 ease-in-out lg:translate-x-0 lg:static lg:flex flex-col h-screen
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="p-8 flex flex-col h-full">
+          <div className="flex items-center justify-between mb-12">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold shadow-xl shadow-indigo-600/30">I</div>
+              <h1 className="text-xl font-bold tracking-tight">Inventory<span className="text-indigo-600">Pro</span></h1>
+            </div>
+            <button 
+              className="lg:hidden p-2 text-slate-400 hover:text-slate-900 transition-colors"
+              onClick={() => setIsSidebarOpen(false)}
+            >
+              <ChevronLeft size={24} />
+            </button>
           </div>
           
-          <nav className="space-y-1.5">
-            <SidebarLink 
-              icon={<LayoutDashboard size={18} />} 
-              label="Overview" 
-              active={activeView === 'dashboard'} 
-              onClick={() => setView('dashboard')}
-            />
-            <SidebarLink 
-              icon={<Package size={18} />} 
-              label="Inventory" 
-              active={activeView === 'inventory'} 
-              onClick={() => setView('inventory')}
-            />
-            <SidebarLink 
-              icon={<BarChart3 size={18} />} 
-              label="Metrics" 
-              active={activeView === 'metrics'} 
-              onClick={() => setView('metrics')}
-            />
-            <SidebarLink 
-              icon={<Settings size={18} />} 
-              label="Settings" 
-              active={activeView === 'settings'} 
-              onClick={() => setView('settings')}
-            />
+          <nav className="space-y-2 flex-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] px-4 mb-4">Menu</p>
+            {navigationItems.map((link) => (
+              <SidebarLink 
+                key={link.id}
+                icon={link.icon} 
+                label={link.label} 
+                active={activeView === link.id} 
+                onClick={() => handleViewChange(link.id as ViewType)}
+              />
+            ))}
           </nav>
-        </div>
 
-        <div className="mt-auto p-6 border-t border-slate-100">
-          <div className="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Current Plan</p>
-            <p className="text-xs font-bold text-slate-900">Enterprise Cloud</p>
-            <div className="mt-2 w-full bg-slate-200 h-1 rounded-full overflow-hidden">
-              <div className="h-full bg-indigo-500 w-[85%] rounded-full" />
+          <div className="mt-auto space-y-6">
+            <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                  <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</p>
+                  <p className="text-xs font-bold text-slate-900">Sync is Active</p>
+                </div>
+              </div>
+              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-500 w-[92%] rounded-full transition-all duration-1000" />
+              </div>
             </div>
+
+            <button 
+              onClick={onLogout}
+              className="flex items-center gap-3 px-4 py-3.5 rounded-2xl text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all w-full group font-medium"
+            >
+              <LogOut size={20} className="group-hover:-translate-x-1 transition-transform" />
+              <span>Log out</span>
+            </button>
           </div>
-          <button 
-            onClick={onLogout}
-            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all w-full group"
-          >
-            <LogOut size={18} className="group-hover:-translate-x-1 transition-transform" />
-            <span className="text-sm font-medium">Sign out</span>
-          </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        <header className="h-16 border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-30 px-8 flex items-center justify-between">
-          <div className="flex items-center gap-4 text-sm text-slate-400">
-            <span className="hover:text-slate-600 cursor-pointer">Pages</span>
-            <ChevronRight size={14} />
-            <span className="text-slate-900 font-semibold capitalize">{activeView}</span>
-            {lastUpdated && (
-              <span className="hidden md:inline-flex items-center gap-1.5 ml-4 px-2.5 py-1 bg-emerald-50 rounded-lg text-[10px] font-bold text-emerald-600 border border-emerald-100">
-                <RefreshCw size={10} className={isSyncing ? 'animate-spin' : ''} />
-                LIVE {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            )}
-          </div>
-          
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0 max-h-screen overflow-y-auto">
+        <header className="h-20 border-b border-slate-100 bg-white/80 backdrop-blur-xl sticky top-0 z-40 px-6 lg:px-10 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
-              onClick={onRefresh}
-              disabled={isSyncing}
-              className={`p-2 text-slate-400 hover:text-indigo-600 transition-all rounded-lg hover:bg-indigo-50 ${isSyncing ? 'animate-spin text-indigo-600' : ''}`}
-              title="Manual Sync"
+              className="lg:hidden p-3 bg-slate-50 rounded-2xl text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95"
+              onClick={() => setIsSidebarOpen(true)}
             >
-              <RefreshCw size={18} />
+              <Menu size={20} />
             </button>
-            
-            <div className="relative group hidden sm:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={16} />
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <span className="hidden sm:inline font-medium hover:text-slate-600 cursor-pointer">Platform</span>
+              <ChevronRight size={14} className="hidden sm:inline" />
+              <span className="text-slate-900 font-bold capitalize">{activeView === 'metrics' ? 'Stats' : activeView}</span>
+              {lastUpdated && (
+                <div className="hidden xs:flex items-center gap-1.5 ml-3 px-2.5 py-1 bg-emerald-50 rounded-full text-[10px] font-bold text-emerald-600 border border-emerald-100">
+                  <div className={`w-1.5 h-1.5 rounded-full bg-emerald-500 ${isSyncing ? 'animate-ping' : ''}`} />
+                  UPDATED {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3 sm:gap-6">
+            <div className="hidden md:flex relative group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={16} />
               <input 
                 type="text" 
-                placeholder="Search resources..."
-                className="pl-10 pr-4 py-1.5 bg-slate-100 border border-transparent rounded-full text-sm w-48 focus:ring-2 focus:ring-indigo-500/20 focus:bg-white focus:border-indigo-500/10 focus:w-64 transition-all outline-none"
+                placeholder="Search..."
+                className="pl-11 pr-4 py-2 bg-slate-100/50 border border-transparent rounded-2xl text-sm w-44 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white focus:border-indigo-500/20 focus:w-64 transition-all outline-none"
               />
             </div>
             
-            <div className="relative">
+            <div className="flex items-center gap-2">
               <button 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className={`p-2 transition-colors relative rounded-lg ${showNotifications ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:text-slate-900'}`}
+                onClick={onRefresh}
+                className={`p-2.5 text-slate-400 hover:text-indigo-600 transition-all rounded-xl hover:bg-indigo-50 ${isSyncing ? 'animate-spin' : ''}`}
               >
-                <Bell size={18} />
-                <span className="absolute top-2 right-2.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
+                <RefreshCw size={20} />
               </button>
               
-              {showNotifications && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
-                  <div className="absolute right-0 mt-3 w-80 bg-white border border-slate-200 rounded-3xl shadow-2xl z-50 animate-in fade-in zoom-in-95 p-2 origin-top-right">
-                    <div className="p-4 border-b border-slate-50 flex justify-between items-center">
-                      <h4 className="font-bold text-sm">Notifications</h4>
-                      <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-900"><X size={16} /></button>
-                    </div>
-                    <div className="max-h-80 overflow-y-auto p-2 space-y-1">
-                      <div className="p-3 bg-indigo-50 rounded-2xl border border-indigo-100/50">
-                        <p className="text-xs font-bold text-indigo-900">New AI Insight Generated</p>
-                        <p className="text-[10px] text-indigo-700/70 mt-1">Review your stock velocity recommendations.</p>
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className={`p-2.5 transition-all relative rounded-xl ${showNotifications ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-50'}`}
+                >
+                  <Bell size={20} />
+                  <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white shadow-sm"></span>
+                </button>
+                
+                {showNotifications && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                    <div className="absolute right-0 mt-4 w-80 bg-white border border-slate-200 rounded-[32px] shadow-2xl z-50 animate-in fade-in zoom-in-95 p-2 origin-top-right overflow-hidden">
+                      <div className="p-5 border-b border-slate-50 flex justify-between items-center">
+                        <h4 className="font-bold text-sm">Notifications</h4>
+                        <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-900"><X size={18} /></button>
                       </div>
-                      <div className="p-3 hover:bg-slate-50 rounded-2xl transition-colors">
-                        <p className="text-xs font-bold text-slate-900">Sync Successful</p>
-                        <p className="text-[10px] text-slate-500 mt-1">All 14 branches updated from Google Sheets.</p>
+                      <div className="max-h-96 overflow-y-auto p-3 space-y-2">
+                        <div className="p-4 bg-indigo-50 rounded-[24px] border border-indigo-100/50">
+                          <p className="text-xs font-bold text-indigo-900 flex items-center gap-2">
+                            <RefreshCw size={12} /> Sync Complete
+                          </p>
+                          <p className="text-[10px] text-indigo-700/70 mt-1 leading-relaxed">Latest data pulled from Google Sheets.</p>
+                        </div>
+                        <div className="p-4 hover:bg-slate-50 rounded-[24px] transition-all cursor-pointer">
+                          <p className="text-xs font-bold text-slate-900">Low Stock Alert</p>
+                          <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">Some items are under the safety threshold.</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
+              </div>
             </div>
             
-            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 border-2 border-white shadow-sm flex items-center justify-center text-white font-bold text-xs ring-1 ring-slate-200">
-              JD
+            <div className="flex items-center gap-3 pl-3 sm:pl-6 border-l border-slate-100">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-600/20 active:scale-95 cursor-pointer">
+                U
+              </div>
             </div>
           </div>
         </header>
 
-        <div className="p-8 max-w-[1600px] mx-auto">
+        <div className="p-6 md:p-10 lg:p-12 w-full">
           {children}
         </div>
       </main>

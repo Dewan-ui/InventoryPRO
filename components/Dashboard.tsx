@@ -1,9 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { InventoryRecord, DailyStats } from '../types';
 import { StockVelocityChart, Sparkline } from './Charts';
-import { ArrowUpRight, ArrowDownRight, TrendingUp, DollarSign, Package, MapPin, Sparkles, AlertTriangle } from 'lucide-react';
-import { getInventoryInsights } from '../services/aiService';
+import { ArrowUpRight, ArrowDownRight, DollarSign, Package, MapPin, AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface DashboardProps {
   data: InventoryRecord[];
@@ -16,19 +15,21 @@ const KPICard: React.FC<{
   icon: React.ReactNode; 
   sparkData: number[];
 }> = ({ title, value, trend, icon, sparkData }) => (
-  <div className="group bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-    <div className="flex justify-between items-start mb-4">
-      <div className="p-2.5 bg-slate-50 rounded-2xl text-slate-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+  <div className="group bg-white border border-slate-200 rounded-[32px] p-6 lg:p-8 shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-500">
+    <div className="flex justify-between items-start mb-6">
+      <div className="p-3 bg-slate-50 rounded-2xl text-slate-600 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300">
         {icon}
       </div>
-      <Sparkline data={sparkData} color={trend > 0 ? '#10b981' : '#f43f5e'} />
+      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+        <Sparkline data={sparkData} color={trend > 0 ? '#10b981' : '#f43f5e'} />
+      </div>
     </div>
     <div>
-      <p className="text-sm text-slate-500 font-medium mb-1">{title}</p>
-      <div className="flex items-end gap-3">
-        <h3 className="text-2xl font-bold tracking-tight">{value}</h3>
-        <span className={`text-xs font-semibold flex items-center gap-0.5 mb-1.5 ${trend > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-          {trend > 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">{title}</p>
+      <div className="flex items-baseline gap-3 flex-wrap">
+        <h3 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">{value}</h3>
+        <span className={`text-xs font-bold flex items-center gap-1 ${trend > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+          {trend > 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
           {Math.abs(trend)}%
         </span>
       </div>
@@ -37,20 +38,6 @@ const KPICard: React.FC<{
 );
 
 export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
-  const [aiInsight, setAiInsight] = useState<string>("Analyzing current trends...");
-  const [isAiLoading, setIsAiLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchAI = async () => {
-      setIsAiLoading(true);
-      const insight = await getInventoryInsights(data);
-      setAiInsight(insight || "Optimization suggested for low-velocity items.");
-      setIsAiLoading(false);
-    };
-    fetchAI();
-  }, [data]);
-
-  // Aggregate daily stats
   const dailyStatsMap = new Map<string, DailyStats>();
   data.forEach(item => {
     const existing = dailyStatsMap.get(item.date) || { date: item.date, stockIn: 0, stockOut: 0, count: 0 };
@@ -61,114 +48,100 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
   });
 
   const dailyStats = Array.from(dailyStatsMap.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  
   const totalValue = data.reduce((acc, curr) => acc + (curr.currentCount * 800), 0);
   const totalItems = data.reduce((acc, curr) => acc + curr.currentCount, 0);
-  
   const branchInflows = data.reduce((acc, curr) => {
     acc[curr.branchName] = (acc[curr.branchName] || 0) + curr.stockOut;
     return acc;
   }, {} as Record<string, number>);
-  
-  const topBranch = Object.entries(branchInflows).sort((a, b) => (b[1] as number) - (a[1] as number))[0]?.[0] || 'N/A';
+  const topBranch = Object.entries(branchInflows).sort((a, b) => (b[1] as number) - (a[1] as number))[0]?.[0] || 'Main Hub';
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">System Overview</h2>
-          <p className="text-slate-500">Real-time performance metrics and inventory velocity.</p>
-        </div>
-        
-        {/* AI Insight Pill */}
-        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 max-w-md animate-in slide-in-from-right-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="text-indigo-600 animate-pulse" size={16} />
-            <span className="text-xs font-bold text-indigo-700 uppercase tracking-widest">AI Strategy Engine</span>
-          </div>
-          <p className={`text-xs text-indigo-900/80 leading-relaxed italic ${isAiLoading ? 'animate-pulse' : ''}`}>
-            {aiInsight}
-          </p>
+    <div className="space-y-8 lg:space-y-12 animate-in fade-in slide-in-from-bottom-6 duration-1000">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-8">
+        <div className="space-y-2">
+          <h2 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900">Inventory Dashboard</h2>
+          <p className="text-slate-500 font-medium">Overview of stock levels and recent activity.</p>
         </div>
       </div>
 
-      {/* KPI Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
         <KPICard 
-          title="Total Inventory Value" 
+          title="Total Value" 
           value={`$${(totalValue / 1000).toFixed(1)}k`} 
           trend={12.5} 
-          icon={<DollarSign size={20} />} 
-          sparkData={[40, 45, 42, 50, 48, 55, 60]}
+          icon={<DollarSign size={24} />} 
+          sparkData={[30, 35, 32, 45, 40, 50, 55]}
         />
         <KPICard 
-          title="Total Items Stocked" 
+          title="Total Stock" 
           value={totalItems.toLocaleString()} 
           trend={-2.4} 
-          icon={<Package size={20} />} 
-          sparkData={[60, 58, 62, 55, 50, 52, 48]}
+          icon={<Package size={24} />} 
+          sparkData={[50, 48, 52, 45, 42, 40, 38]}
         />
         <KPICard 
-          title="Top Activity Hub" 
+          title="Top Branch" 
           value={topBranch.split(' ')[0]} 
-          trend={8.2} 
-          icon={<MapPin size={20} />} 
-          sparkData={[30, 35, 45, 42, 50, 55, 65]}
+          trend={8.9} 
+          icon={<MapPin size={24} />} 
+          sparkData={[20, 25, 40, 35, 50, 55, 60]}
         />
       </div>
 
-      {/* Bento Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
-          <div className="flex justify-between items-center mb-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
+        <div className="xl:col-span-2 bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-10">
             <div>
-              <h3 className="text-lg font-bold">Stock Velocity</h3>
-              <p className="text-sm text-slate-500">Inbound vs Outbound tracking (7 Days)</p>
+              <h3 className="text-xl font-bold text-slate-900">Stock Trends</h3>
+              <p className="text-sm text-slate-500 mt-1">Movement over the last 7 days.</p>
             </div>
-            <div className="flex items-center gap-4 text-xs font-medium">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
-                <span className="text-slate-600">Stock In</span>
+            <div className="flex items-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+                Inbound
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-slate-300"></span>
-                <span className="text-slate-600">Stock Out</span>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-200"></span>
+                Outbound
               </div>
             </div>
           </div>
-          <StockVelocityChart data={dailyStats.slice(-7)} />
+          <div className="h-[350px]">
+            <StockVelocityChart data={dailyStats.slice(-7)} />
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm flex flex-col">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold">Active Issues</h3>
-            <span className="bg-rose-50 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-100">3 Priority</span>
+        <div className="bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm flex flex-col">
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-xl font-bold text-slate-900">Alerts</h3>
           </div>
           <div className="space-y-4 flex-1">
             {[
-              { label: 'Critical: Stock Depleted', branch: 'Dubai Mall', time: 'Just now', type: 'error', item: 'iPhone 15 Pro' },
-              { label: 'Data Sync Delay', branch: 'Network', time: '12m ago', type: 'warning', item: 'System-wide' },
-              { label: 'Unusual Outflow Spike', branch: 'Al Wahda', time: '1h ago', type: 'warning', item: 'iPad Air' },
+              { label: 'High Outflow', branch: 'Retail Hub', time: 'Just now', type: 'warning', icon: <ArrowUpRight size={16} /> },
+              { label: 'Low Stock', branch: 'Dist. Center', time: '18m ago', type: 'error', icon: <AlertTriangle size={16} /> },
+              { label: 'Sync Status', branch: 'Database', time: '2h ago', type: 'success', icon: <RefreshCw size={16} /> },
             ].map((alert, idx) => (
-              <div key={idx} className="flex gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-100 transition-all cursor-pointer group hover:bg-white hover:shadow-md">
-                <div className={`p-2 rounded-xl h-fit ${
-                  alert.type === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-rose-100 text-rose-600'
+              <div key={idx} className="flex gap-4 p-5 rounded-3xl bg-slate-50/50 border border-slate-100 hover:border-indigo-100 hover:bg-white transition-all duration-300 cursor-pointer group">
+                <div className={`p-2.5 rounded-2xl h-fit shrink-0 transition-colors ${
+                  alert.type === 'error' ? 'bg-rose-100 text-rose-600' : 
+                  alert.type === 'warning' ? 'bg-amber-100 text-amber-600' : 
+                  'bg-emerald-100 text-emerald-600'
                 }`}>
-                  <AlertTriangle size={16} />
+                  {alert.icon}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-slate-900 truncate">{alert.label}</p>
-                  <p className="text-xs text-slate-500 mb-2">{alert.item}</p>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-medium text-slate-400 uppercase">{alert.branch}</span>
-                    <span className="text-[10px] text-slate-400">{alert.time}</span>
+                  <div className="flex justify-between items-start mb-1">
+                    <p className="text-sm font-bold text-slate-900 truncate">{alert.label}</p>
+                    <span className="text-[9px] text-slate-400 whitespace-nowrap">{alert.time}</span>
                   </div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{alert.branch}</p>
                 </div>
               </div>
             ))}
           </div>
-          <button className="mt-8 py-3 text-sm font-semibold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all border border-dashed border-slate-200 hover:border-indigo-300">
-            View All Resolution Center
+          <button className="mt-8 w-full py-4 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 hover:text-white hover:bg-slate-900 rounded-2xl transition-all duration-300 border border-dashed border-slate-200 hover:border-slate-900 active:scale-95">
+            View All Notifications
           </button>
         </div>
       </div>

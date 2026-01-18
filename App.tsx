@@ -8,16 +8,12 @@ import { Inventory } from './components/Inventory';
 import { Metrics } from './components/Metrics';
 import { Auth } from './components/Auth';
 import { 
-  Loader2, 
-  AlertCircle, 
   ShieldAlert, 
   Key, 
-  Database, 
   Lock, 
-  Unlock, 
-  Server,
   Save,
-  Info
+  Fingerprint,
+  Terminal
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -30,11 +26,11 @@ const App: React.FC = () => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Connection Settings (Persisted in LocalStorage)
+  // Connection Settings
   const [usePrivateAPI, setUsePrivateAPI] = useState(() => localStorage.getItem('inventory_use_private') === 'true');
   const [googleAPIKey, setGoogleAPIKey] = useState(() => localStorage.getItem('inventory_google_key') || '');
+  const [googleAccessToken, setGoogleAccessToken] = useState(() => localStorage.getItem('inventory_access_token') || '');
 
-  // Check for existing session on mount
   useEffect(() => {
     const savedSession = localStorage.getItem('inventory_session');
     if (savedSession) {
@@ -57,19 +53,19 @@ const App: React.FC = () => {
     try {
       const inventory = await fetchInventoryData({
         apiKey: googleAPIKey,
+        accessToken: googleAccessToken,
         usePrivateAPI: usePrivateAPI
       });
       setData(inventory);
       setLastUpdated(new Date());
     } catch (err: any) {
       setError(err.message);
-      // If data exists, don't clear it on silent refresh error, but show warning
       if (!isSilent) setData([]);
     } finally {
       setLoading(false);
       setIsSyncing(false);
     }
-  }, [googleAPIKey, usePrivateAPI]);
+  }, [googleAPIKey, googleAccessToken, usePrivateAPI]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -80,6 +76,7 @@ const App: React.FC = () => {
   const handleSaveSettings = () => {
     localStorage.setItem('inventory_use_private', String(usePrivateAPI));
     localStorage.setItem('inventory_google_key', googleAPIKey);
+    localStorage.setItem('inventory_access_token', googleAccessToken);
     loadData();
   };
 
@@ -95,17 +92,13 @@ const App: React.FC = () => {
     setData([]);
   };
 
-  if (!isAuthenticated) {
-    return <Auth onLogin={handleLogin} />;
-  }
+  if (!isAuthenticated) return <Auth onLogin={handleLogin} />;
 
   if (loading && data.length === 0) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-4">
-        <div className="relative">
-          <div className="w-12 h-12 border-2 border-slate-100 rounded-full border-t-indigo-600 animate-spin" />
-        </div>
-        <p className="text-slate-400 text-sm font-medium animate-pulse uppercase tracking-widest">Verifying Connection...</p>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="w-12 h-12 border-2 border-slate-100 rounded-full border-t-indigo-600 animate-spin" />
+        <p className="text-slate-400 text-sm font-medium animate-pulse">Loading data...</p>
       </div>
     );
   }
@@ -120,170 +113,119 @@ const App: React.FC = () => {
       lastUpdated={lastUpdated}
     >
       {error && !isSyncing && (
-        <div className="mb-8 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-rose-800 animate-in slide-in-from-top-4">
-          <div className="flex items-center gap-3">
-            <ShieldAlert size={20} className="text-rose-600" />
+        <div className="mb-8 p-5 md:p-6 bg-rose-50 border border-rose-200 rounded-[28px] flex flex-col md:flex-row items-start md:items-center justify-between gap-5 text-rose-800 animate-in slide-in-from-top-4">
+          <div className="flex items-start gap-4">
+            <div className="p-2.5 bg-rose-100 rounded-2xl text-rose-600 shrink-0">
+              <ShieldAlert size={22} />
+            </div>
             <div className="text-sm">
-              <span className="font-bold">Sync Error:</span> {error}
+              <p className="font-bold text-base mb-1">Connection Error</p>
+              <p className="opacity-90 leading-relaxed text-xs md:text-sm">{error}</p>
             </div>
           </div>
           <button 
-            onClick={() => setView('settings')}
-            className="text-xs font-bold uppercase tracking-wider text-rose-700 hover:text-rose-900 underline"
+            onClick={() => setView('settings')} 
+            className="w-full md:w-auto shrink-0 bg-rose-600 text-white px-6 py-3 rounded-2xl text-xs font-bold uppercase tracking-wider hover:bg-rose-700 transition-all shadow-lg shadow-rose-600/20 active:scale-95"
           >
-            Fix Connection
+            Adjust Settings
           </button>
         </div>
       )}
 
-      {data.length === 0 && !loading ? (
-        <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 animate-in fade-in duration-700">
-          <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center text-amber-500 border border-amber-100">
-            <Lock size={40} />
+      {view === 'dashboard' && <Dashboard data={data} />}
+      {view === 'inventory' && <Inventory data={data} />}
+      {view === 'metrics' && <Metrics data={data} />}
+      {view === 'settings' && (
+        <div className="max-w-4xl mx-auto space-y-6 md:space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-24">
+          <div className="flex flex-col gap-1 px-1">
+            <h2 className="text-2xl md:text-4xl font-extrabold tracking-tight text-slate-900">Settings</h2>
+            <p className="text-sm md:text-base text-slate-500 font-medium">Manage your Google Sheet connection.</p>
           </div>
-          <div className="space-y-2">
-            <h3 className="text-2xl font-bold tracking-tight">Access Restricted</h3>
-            <p className="text-slate-500 max-w-md mx-auto">
-              {usePrivateAPI 
-                ? "Your API Key might be invalid or restricted."
-                : "The sheet is private. Enable 'Secure Sync' in settings or make the sheet public."}
-            </p>
-          </div>
-          <div className="flex gap-4">
-            <button 
-              onClick={() => setView('settings')}
-              className="px-8 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-black transition-all"
-            >
-              Update Settings
-            </button>
-            <button 
-              onClick={() => loadData()}
-              className="px-8 py-3 bg-white border border-slate-200 text-slate-900 rounded-2xl font-bold hover:bg-slate-50 transition-all"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {view === 'dashboard' && <Dashboard data={data} />}
-          {view === 'inventory' && <Inventory data={data} />}
-          {view === 'metrics' && <Metrics data={data} />}
-          {view === 'settings' && (
-            <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-              <div className="flex flex-col gap-1">
-                <h2 className="text-3xl font-bold tracking-tight">Settings & Security</h2>
-                <p className="text-slate-500">Configure your enterprise connection and audit system health.</p>
+
+          <div className="bg-white border border-slate-200 rounded-[32px] p-5 md:p-10 shadow-sm relative overflow-hidden">
+            <div className="flex flex-row items-start justify-between gap-4 mb-10">
+              <div className="flex items-start md:items-center gap-4 flex-1">
+                <div className={`p-3 rounded-2xl shrink-0 transition-all duration-300 ${usePrivateAPI ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'bg-slate-100 text-slate-400'}`}>
+                  <Fingerprint size={24} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-lg md:text-xl font-bold text-slate-900">Private Sheet Mode</h3>
+                  <p className="text-xs md:text-sm text-slate-500 leading-relaxed mt-0.5">
+                    Enable if your sheet access is restricted.
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setUsePrivateAPI(!usePrivateAPI)}
+                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-all focus:outline-none mt-2 md:mt-0 ${usePrivateAPI ? 'bg-indigo-600' : 'bg-slate-200'}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${usePrivateAPI ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+
+            <div className="space-y-6 md:space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-8">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">API Key</label>
+                  <div className="relative">
+                    <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input 
+                      type="password" 
+                      value={googleAPIKey}
+                      onChange={(e) => setGoogleAPIKey(e.target.value)}
+                      disabled={!usePrivateAPI}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 md:py-4 pl-12 pr-4 text-sm focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all disabled:opacity-30 outline-none placeholder:text-slate-300"
+                      placeholder="Enter Google API Key..."
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] px-1">Access Token</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                    <input 
+                      type="password" 
+                      value={googleAccessToken}
+                      onChange={(e) => setGoogleAccessToken(e.target.value)}
+                      disabled={!usePrivateAPI}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 md:py-4 pl-12 pr-4 text-sm focus:ring-4 focus:ring-indigo-500/5 focus:bg-white focus:border-indigo-500/30 transition-all disabled:opacity-30 outline-none placeholder:text-slate-300"
+                      placeholder="Enter OAuth Token..."
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Secure Connection Card */}
-                <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm flex flex-col h-full">
-                  <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-xl ${usePrivateAPI ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-50 text-slate-400'}`}>
-                        <Server size={20} />
-                      </div>
-                      <h3 className="text-lg font-bold">Secure Sync</h3>
-                    </div>
-                    <button 
-                      onClick={() => setUsePrivateAPI(!usePrivateAPI)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ring-2 ring-offset-2 ring-transparent ${usePrivateAPI ? 'bg-indigo-600' : 'bg-slate-200'}`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${usePrivateAPI ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                  </div>
-
-                  <div className="space-y-6 flex-1">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Google API Key</label>
-                      <div className="relative">
-                        <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input 
-                          type="password" 
-                          value={googleAPIKey}
-                          onChange={(e) => setGoogleAPIKey(e.target.value)}
-                          disabled={!usePrivateAPI}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                          placeholder="AIzaSyA..."
-                        />
-                      </div>
-                      <p className="text-[10px] text-slate-400 leading-tight px-1 flex gap-1 items-start mt-2">
-                        <Info size={10} className="mt-0.5 shrink-0" />
-                        Requires 'Google Sheets API' enabled in Google Cloud Console.
-                      </p>
-                    </div>
-
-                    <div className={`p-4 rounded-2xl border transition-all ${usePrivateAPI ? 'bg-indigo-50/50 border-indigo-100 text-indigo-900' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                      <p className="text-xs font-bold flex items-center gap-2 mb-1">
-                        {usePrivateAPI ? <Lock size={12} /> : <Unlock size={12} />}
-                        {usePrivateAPI ? 'Encrypted Sync Active' : 'Public Link Sync Active'}
-                      </p>
-                      <p className="text-[10px] leading-relaxed opacity-70">
-                        {usePrivateAPI 
-                          ? 'Using official API v4. This supports private sheets but requires a valid API key from your cloud project.'
-                          : 'Using CSV export mode. Your Google Sheet must be set to "Anyone with link can view".'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={handleSaveSettings}
-                    className="mt-8 w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2"
-                  >
-                    <Save size={18} />
-                    Save & Re-sync
-                  </button>
+              <div className="p-5 md:p-8 rounded-[28px] bg-slate-900 text-white space-y-5">
+                <div className="flex items-center gap-3 mb-1">
+                  <Terminal size={18} className="text-indigo-400" />
+                  <h4 className="text-[11px] md:text-xs font-bold uppercase tracking-widest text-indigo-200">Connection Guide</h4>
                 </div>
-
-                {/* Audit & Stats */}
-                <div className="space-y-6">
-                  <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="p-2 bg-rose-50 rounded-xl text-rose-600">
-                        <ShieldAlert size={20} />
+                <div className="space-y-5">
+                  {[
+                    { step: 1, text: "Enable Sheets API in your Google Cloud Project." },
+                    { step: 2, text: "Share your spreadsheet with your service account email." },
+                    { step: 3, text: "Apply your credentials above to begin syncing." }
+                  ].map((item) => (
+                    <div key={item.step} className="flex gap-4 items-start">
+                      <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-[11px] font-black shrink-0 text-white">
+                        {item.step}
                       </div>
-                      <h3 className="text-lg font-bold">Security Health</h3>
+                      <p className="text-xs md:text-sm text-slate-300 leading-relaxed font-medium">{item.text}</p>
                     </div>
-                    <div className="space-y-4">
-                      <div className="flex items-start gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                        <div className="text-slate-400 mt-0.5"><Database size={16} /></div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">Local Cache</p>
-                          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                            {data.length} records currently cached for performance.
-                          </p>
-                        </div>
-                      </div>
-                      {!usePrivateAPI && (
-                        <div className="flex items-start gap-4 p-4 rounded-2xl bg-amber-50 border border-amber-100">
-                          <div className="text-amber-500 mt-0.5"><Info size={16} /></div>
-                          <div>
-                            <p className="text-sm font-bold text-amber-900">Public Vulnerability</p>
-                            <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                              You are currently in Public Sync mode. Anyone with your sheet URL can access raw data.
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-1000" />
-                    <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Branch Coverage</h4>
-                    <p className="text-3xl font-bold">14 Active Hubs</p>
-                    <div className="mt-4 flex gap-1">
-                      {[1,2,3,4,5,6,7].map(i => <div key={i} className="h-1 flex-1 bg-indigo-500 rounded-full" />)}
-                      <div className="h-1 flex-1 bg-slate-700 rounded-full" />
-                    </div>
-                    <p className="mt-4 text-[10px] text-slate-500 font-medium">Monitoring 2.4k devices globally.</p>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
-          )}
-        </>
+
+            <button 
+              onClick={handleSaveSettings}
+              className="mt-8 md:mt-10 w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-sm md:text-base hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20 flex items-center justify-center gap-3 active:scale-[0.98] group"
+            >
+              <Save size={20} className="group-hover:scale-110 transition-transform" />
+              Save Configuration
+            </button>
+          </div>
+        </div>
       )}
     </AppLayout>
   );
