@@ -11,12 +11,25 @@ import { Loader2, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<{ name: string; email: string } | null>(null);
   const [view, setView] = useState<ViewType>('dashboard');
   const [data, setData] = useState<InventoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const savedSession = localStorage.getItem('inventory_session');
+    if (savedSession) {
+      const userData = JSON.parse(savedSession);
+      setUser(userData);
+      setIsAuthenticated(true);
+    } else {
+      setLoading(false); // If no session, stop loading to show Auth screen
+    }
+  }, []);
 
   const loadData = useCallback(async (isSilent = false) => {
     if (!isSilent) setLoading(true);
@@ -52,11 +65,23 @@ const App: React.FC = () => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isAuthenticated, loadData]);
 
+  const handleLogin = (userData: { name: string; email: string }) => {
+    setUser(userData);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('inventory_session');
+    setUser(null);
+    setIsAuthenticated(false);
+    setData([]);
+  };
+
   if (!isAuthenticated) {
-    return <Auth onLogin={() => setIsAuthenticated(true)} />;
+    return <Auth onLogin={handleLogin} />;
   }
 
-  if (loading) {
+  if (loading && data.length === 0) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
         <div className="relative">
@@ -72,12 +97,12 @@ const App: React.FC = () => {
     <AppLayout 
       activeView={view} 
       setView={setView} 
-      onLogout={() => setIsAuthenticated(false)}
+      onLogout={handleLogout}
       onRefresh={() => loadData(true)}
       isSyncing={isSyncing}
       lastUpdated={lastUpdated}
     >
-      {data.length === 0 ? (
+      {data.length === 0 && !loading ? (
         <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 animate-in fade-in duration-700">
           <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center text-amber-500">
             <AlertCircle size={40} />
@@ -106,7 +131,7 @@ const App: React.FC = () => {
                 <Loader2 size={32} />
               </div>
               <h3 className="text-xl font-bold">Preferences Under Construction</h3>
-              <p className="text-slate-500 max-w-sm">Configuration options for API endpoints and notification webhooks are currently in development.</p>
+              <p className="text-slate-500 max-w-sm">Hello {user?.name}, configuration options for API endpoints and notification webhooks are currently in development.</p>
             </div>
           )}
         </>
