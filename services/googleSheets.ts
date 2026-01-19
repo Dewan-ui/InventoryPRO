@@ -7,28 +7,36 @@ export const fetchInventoryData = async (options?: {
   accessToken?: string;
   usePrivateAPI?: boolean 
 }): Promise<InventoryRecord[]> => {
+  // Priority 1: Vercel Environment Variables
+  // Priority 2: Default Config Constants
   const SHEET_ID = import.meta.env.VITE_SHEET_ID || APP_CONFIG.DEFAULT_SHEET_ID;
   const GID = import.meta.env.VITE_SHEET_GID || APP_CONFIG.DEFAULT_SHEET_GID;
+  
+  // Automagically use the API_KEY from the environment if provided in Vercel
+  const systemApiKey = process.env.API_KEY;
+  const effectiveApiKey = options?.apiKey || systemApiKey;
+  const isPrivateMode = options?.usePrivateAPI ?? (!!effectiveApiKey);
 
   try {
     // --- MODE: Official Google Sheets API v4 (Private or Multi-Tab) ---
-    if (options?.usePrivateAPI && (options?.apiKey || options?.accessToken)) {
+    // This is now the default path if an API Key is detected in the environment
+    if (isPrivateMode && (effectiveApiKey || options?.accessToken)) {
       const headers: HeadersInit = {};
-      if (options.accessToken) {
+      if (options?.accessToken) {
         headers['Authorization'] = `Bearer ${options.accessToken}`;
       }
 
-      const queryParams = options.apiKey ? `?key=${options.apiKey}` : '';
+      const queryParams = effectiveApiKey ? `?key=${effectiveApiKey}` : '';
       const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${queryParams}`;
       
       const metaResponse = await fetch(metaUrl, { headers });
       
       if (metaResponse.status === 403) {
-        throw new Error('ACCESS_DENIED: The sheet is private. Step 1: Create a Service Account. Step 2: Ask the owner to share the sheet with that email.');
+        throw new Error('ACCESS_DENIED: The sheet is private. Ensure your Service Account email has "Viewer" access to the spreadsheet.');
       }
       
       if (metaResponse.status === 401) {
-        throw new Error('TOKEN_EXPIRED: Your OAuth Access Token has expired. Please refresh it in the Cloud Console.');
+        throw new Error('TOKEN_EXPIRED: The session has expired. Please refresh your credentials.');
       }
 
       if (!metaResponse.ok) throw new Error(`Google API Error: ${metaResponse.statusText}`);
@@ -38,6 +46,7 @@ export const fetchInventoryData = async (options?: {
       const sheetNames = metaData.sheets.map((s: any) => s.properties.title);
 
       for (const sheetName of sheetNames) {
+        // Skip administrative tabs
         if (sheetName.toLowerCase().includes('summary') || sheetName.toLowerCase().includes('config')) continue;
 
         const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/'${sheetName}'!A:Z${queryParams}`;
@@ -53,11 +62,11 @@ export const fetchInventoryData = async (options?: {
     // --- MODE: Public CSV Export (Fallback) ---
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
     const response = await fetch(CSV_URL);
-    if (!response.ok) throw new Error('Failed to fetch public sheet data');
+    if (!response.ok) throw new Error('Failed to fetch sheet data. Check if SHEET_ID is correct.');
     
     const csvText = await response.text();
     if (csvText.trim().toLowerCase().startsWith('<!doctype html')) {
-      throw new Error('PRIVATE_SHEET_DETECTED: This sheet is not public. Please enable "Secure Sync" in Settings.');
+      throw new Error('PRIVATE_SHEET_DETECTED: This sheet is private. You must provide a Google API Key in Vercel settings.');
     }
 
     const rows = parseCSV(csvText);
