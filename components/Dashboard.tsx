@@ -4,7 +4,6 @@ import { StockVelocityChart, Sparkline } from './Charts';
 import { 
   ArrowUpRight, 
   ArrowDownRight, 
-  DollarSign, 
   Package, 
   MapPin, 
   AlertTriangle, 
@@ -57,7 +56,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, insights }) => {
   });
 
   const dailyStats = Array.from(dailyStatsMap.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const totalValue = data.reduce((acc, curr) => acc + (curr.currentCount * 800), 0);
   const totalItems = data.reduce((acc, curr) => acc + curr.currentCount, 0);
   const branchInflows = data.reduce((acc, curr) => {
     acc[curr.branchName] = (acc[curr.branchName] || 0) + curr.stockOut;
@@ -74,14 +72,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, insights }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-        <KPICard 
-          title="Total Value" 
-          value={`$${(totalValue / 1000).toFixed(1)}k`} 
-          trend={12.5} 
-          icon={<DollarSign size={24} />} 
-          sparkData={[30, 35, 32, 45, 40, 50, 55]}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 max-w-5xl">
         <KPICard 
           title="Total Stock" 
           value={totalItems.toLocaleString()} 

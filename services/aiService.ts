@@ -1,9 +1,9 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { InventoryRecord } from "../types";
 
 /**
  * AI Service for generating intelligent inventory insights.
- * Uses Google Gemini API (gemini-1.5-pro) to analyze stock levels and provide actionable recommendations.
+ * Uses Google Gemini API (gemini-3-pro-preview) to analyze stock levels and provide actionable recommendations.
  */
 export const getInventoryInsights = async (data: InventoryRecord[]): Promise<string[] | null> => {
   // Use the API key exclusively from the environment variable process.env.API_KEY as per guidelines
@@ -15,34 +15,43 @@ export const getInventoryInsights = async (data: InventoryRecord[]): Promise<str
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-pro",
-      systemInstruction: "You are a senior supply chain analyst. Provide concise, data-driven, and high-impact strategic insights."
-    });
+    const ai = new GoogleGenAI({ apiKey });
     
     // Prepare a summary of the most recent data for the model
     const recentData = data.slice(-30).map(d => 
       `${d.date}: ${d.branchName} - ${d.deviceName} (Current: ${d.currentCount}, In: ${d.stockIn}, Out: ${d.stockOut})`
     ).join('\n');
 
-    const prompt = `Analyze the following inventory data trends and provide exactly 3 professional, actionable insights for optimization:\n\n${recentData}`;
+    // Use gemini-3-pro-preview for complex reasoning and data analysis tasks
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: `Analyze the following inventory data trends and provide exactly 3 professional, actionable insights for optimization:\n\n${recentData}`,
+      config: {
+        systemInstruction: "You are a senior supply chain analyst. Provide concise, data-driven, and high-impact strategic insights.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            insights: {
+              type: Type.ARRAY,
+              items: { 
+                type: Type.STRING,
+                description: "A professional inventory management insight."
+              },
+              description: "A list of 3 strategic insights."
+            }
+          },
+          required: ["insights"]
+        }
+      }
+    });
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    
-    if (!text) return null;
+    // Access the .text property directly as per the @google/genai SDK guidelines
+    const jsonStr = response.text;
+    if (!jsonStr) return null;
 
-    // Try to parse as JSON, fallback to splitting by newlines if not structured
-    try {
-      const parsed = JSON.parse(text);
-      return parsed.insights || null;
-    } catch {
-      // If not JSON, split by newlines and take first 3
-      const insights = text.split('\n').filter(line => line.trim()).slice(0, 3);
-      return insights.length > 0 ? insights : null;
-    }
+    const parsed = JSON.parse(jsonStr);
+    return parsed.insights || null;
   } catch (error) {
     console.error("Gemini API Error:", error);
     return null;

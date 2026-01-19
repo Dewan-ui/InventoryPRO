@@ -1,4 +1,3 @@
-
 /**
  * APP CONTROL PANEL
  * 
@@ -16,6 +15,6 @@ export const APP_CONFIG = {
   
   // App Metadata
   COMPANY_NAME: 'Inventory Pro',
-  CURRENCY_SYMBOL: '$',
-  DEFAULT_ITEM_VALUE: 800, // Used for the "Total Inventory Value" calculation
+  CURRENCY_SYMBOL: '₦',
+  DEFAULT_ITEM_VALUE: 0, // Valuation removed as per request
 };
