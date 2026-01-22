@@ -1,9 +1,11 @@
+
 // Removed problematic reference to fix "Cannot find type definition file for 'vite/client'"
 // Manual type declarations for Vite environment variables are provided below.
 
 interface ImportMetaEnv {
   readonly VITE_SHEET_ID: string;
   readonly VITE_SHEET_GID: string;
+  readonly VITE_API_KEY: string;
 }
 
 interface ImportMeta {

@@ -7,21 +7,22 @@ export const fetchInventoryData = async (options?: {
   accessToken?: string;
   usePrivateAPI?: boolean 
 }): Promise<InventoryRecord[]> => {
-  // Priority 1: Vercel Environment Variables
-  // Priority 2: Default Config Constants
   const SHEET_ID = import.meta.env.VITE_SHEET_ID || APP_CONFIG.DEFAULT_SHEET_ID;
   const GID = import.meta.env.VITE_SHEET_GID || APP_CONFIG.DEFAULT_SHEET_GID;
   
-  // Automagically use the API_KEY from the environment if provided in Vercel
+  // Resolve API Key from defined process.env or options
   const systemApiKey = process.env.API_KEY;
   const effectiveApiKey = options?.apiKey || systemApiKey;
-  const isPrivateMode = options?.usePrivateAPI ?? (!!effectiveApiKey);
+  
+  // Use v4 API if any credential is provided
+  const useV4Api = !!(effectiveApiKey || options?.accessToken);
 
   try {
-    // --- MODE: Official Google Sheets API v4 (Private or Multi-Tab) ---
-    // This is now the default path if an API Key is detected in the environment
-    if (isPrivateMode && (effectiveApiKey || options?.accessToken)) {
-      const headers: HeadersInit = {};
+    if (useV4Api) {
+      const headers: HeadersInit = {
+        'Accept': 'application/json',
+      };
+      
       if (options?.accessToken) {
         headers['Authorization'] = `Bearer ${options.accessToken}`;
       }
@@ -32,21 +33,29 @@ export const fetchInventoryData = async (options?: {
       const metaResponse = await fetch(metaUrl, { headers });
       
       if (metaResponse.status === 403) {
-        throw new Error('ACCESS_DENIED: The sheet is private. Ensure your Service Account email has "Viewer" access to the spreadsheet.');
+        // This is the specific error the user is hitting
+        throw new Error('IDENTITY_MISMATCH: Your API Key is valid, but Google does not know you are the Service Account. For private sheets, you must set access to "Anyone with the link can view" when using an API Key.');
       }
       
       if (metaResponse.status === 401) {
-        throw new Error('TOKEN_EXPIRED: The session has expired. Please refresh your credentials.');
+        throw new Error('UNAUTHORIZED: The API Key or Access Token provided is invalid or has expired.');
       }
 
-      if (!metaResponse.ok) throw new Error(`Google API Error: ${metaResponse.statusText}`);
+      if (metaResponse.status === 404) {
+        throw new Error(`NOT_FOUND: Spreadsheet ID "${SHEET_ID}" not found. Verify VITE_SHEET_ID in Vercel.`);
+      }
+
+      if (!metaResponse.ok) {
+        const errBody = await metaResponse.json().catch(() => ({}));
+        throw new Error(errBody.error?.message || `Google API Error ${metaResponse.status}`);
+      }
       
       const metaData = await metaResponse.json();
       const allRecords: InventoryRecord[] = [];
       const sheetNames = metaData.sheets.map((s: any) => s.properties.title);
 
+      // Batch fetch sheet values for performance
       for (const sheetName of sheetNames) {
-        // Skip administrative tabs
         if (sheetName.toLowerCase().includes('summary') || sheetName.toLowerCase().includes('config')) continue;
 
         const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/'${sheetName}'!A:Z${queryParams}`;
@@ -59,14 +68,17 @@ export const fetchInventoryData = async (options?: {
       return allRecords;
     }
 
-    // --- MODE: Public CSV Export (Fallback) ---
+    // Fallback path: Public CSV export
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
     const response = await fetch(CSV_URL);
-    if (!response.ok) throw new Error('Failed to fetch sheet data. Check if SHEET_ID is correct.');
+    
+    if (!response.ok) {
+      throw new Error(`CONNECTION_FAILED: Google returned ${response.status}. Ensure the Sheet is shared correctly.`);
+    }
     
     const csvText = await response.text();
     if (csvText.trim().toLowerCase().startsWith('<!doctype html')) {
-      throw new Error('PRIVATE_SHEET_DETECTED: This sheet is private. You must provide a Google API Key in Vercel settings.');
+      throw new Error('ACCESS_RESTRICTED: Sheet is private. Change General Access to "Anyone with link" or configure VITE_API_KEY.');
     }
 
     const rows = parseCSV(csvText);
@@ -101,7 +113,7 @@ function parseCSV(text: string): string[][] {
 }
 
 function transformMatrixToRecords(rows: string[][], sourceSheet: string): InventoryRecord[] {
-  if (!rows || rows.length < 1) return [];
+  if (!rows || rows.length < 2) return [];
 
   const headers = rows[0];
   const records: InventoryRecord[] = [];
@@ -121,7 +133,7 @@ function transformMatrixToRecords(rows: string[][], sourceSheet: string): Invent
       const dateMatch = header.match(dateRegex);
       const date = dateMatch ? dateMatch[1] : 'Recent';
       
-      const cleanValue = parseInt(cellValue.replace(/[^\d]/g, '')) || 0;
+      const cleanValue = parseInt(cellValue.toString().replace(/[^\d]/g, '')) || 0;
 
       const isClosingBalance = header.toLowerCase().includes('closing balance');
       const isInbound = header.toLowerCase().includes('inbound');
