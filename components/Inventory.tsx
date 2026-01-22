@@ -26,7 +26,6 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const itemsPerPage = 10;
 
-  // Defensive data extraction
   const safeData = useMemo(() => data || [], [data]);
 
   const branches = useMemo(() => {
@@ -49,26 +48,32 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
   const insights = useMemo(() => {
     if (branchData.length === 0) return null;
 
-    const sortedByCount = [...branchData].sort((a, b) => b.currentCount - a.currentCount);
+    const sortedByCount = [...branchData].sort((a, b) => (b.currentCount || 0) - (a.currentCount || 0));
     const highestStock = sortedByCount[0];
     
     const inbounds = branchData.filter(d => d.stockIn > 0)
       .sort((a, b) => {
-        const timeA = new Date(a.date).getTime();
-        const timeB = new Date(b.date).getTime();
-        return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+        const getTime = (d: string) => {
+          const parsed = new Date(d).getTime();
+          return isNaN(parsed) ? 0 : parsed;
+        };
+        return getTime(b.date) - getTime(a.date);
       });
     const lastInbound = inbounds[0];
 
     const skuMap = new Map<string, number>();
     branchData.forEach(item => {
       if (item.deviceName) {
-        skuMap.set(item.deviceName, (skuMap.get(item.deviceName) || 0) + item.currentCount);
+        skuMap.set(item.deviceName, (skuMap.get(item.deviceName) || 0) + (item.currentCount || 0));
       }
     });
     
     const chartData = Array.from(skuMap.entries())
-      .map(([name, qty]) => ({ name: name.split(' ')[0], full: name, qty }))
+      .map(([name, qty]) => ({ 
+        name: name ? name.split(' ')[0] : 'Unknown', 
+        full: name || 'Unknown SKU', 
+        qty 
+      }))
       .filter(item => item.qty > 0)
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 10);
@@ -80,7 +85,7 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
     const uniqueSKUs: Record<string, InventoryRecord> = {};
     branchData.forEach(record => {
       if (record.deviceName) {
-        if (!uniqueSKUs[record.deviceName] || record.currentCount > uniqueSKUs[record.deviceName].currentCount) {
+        if (!uniqueSKUs[record.deviceName] || (record.currentCount || 0) > (uniqueSKUs[record.deviceName].currentCount || 0)) {
           uniqueSKUs[record.deviceName] = record;
         }
       }
@@ -119,7 +124,7 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
                 <div className="fixed inset-0 z-40" onClick={() => setIsMenuOpen(false)} />
                 <div className="absolute right-0 mt-3 w-64 bg-white border border-slate-200 rounded-[28px] shadow-2xl z-50 animate-in fade-in zoom-in-95 p-2 origin-top-right">
                   <div className="p-4 border-b border-slate-50">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select Location</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select Branch</p>
                   </div>
                   <div className="max-h-72 overflow-y-auto p-2 space-y-1">
                     {branches.map(branch => (
@@ -158,8 +163,8 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
                 <Package size={28} />
               </div>
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Peak Allocation</p>
-                <h4 className="text-sm font-bold text-slate-900">Highest Inventory SKU</h4>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Local Leader</p>
+                <h4 className="text-sm font-bold text-slate-900">Highest In-Stock SKU</h4>
               </div>
             </div>
             
@@ -169,7 +174,7 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
             
             <div className="flex items-baseline gap-3">
               <span className="text-6xl font-black text-indigo-600 tracking-tighter">
-                {insights?.highestStock?.currentCount?.toLocaleString() || '0'}
+                {(insights?.highestStock?.currentCount || 0).toLocaleString()}
               </span>
               <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">Units Available</span>
             </div>
@@ -186,8 +191,8 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
                 <Truck size={28} />
               </div>
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Logistics Update</p>
-                <h4 className="text-sm font-bold text-indigo-100">Last Stock Injection</h4>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Flow</p>
+                <h4 className="text-sm font-bold text-indigo-100">Latest Movement</h4>
               </div>
             </div>
 
@@ -205,12 +210,12 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 py-2 px-4 bg-white/5 rounded-2xl w-fit border border-white/5">
-                      <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Confirmed: {insights.lastInbound.date}</span>
+                      <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Updated: {insights.lastInbound.date}</span>
                     </div>
                     {insights.lastInbound.remarks && (
                       <div className="flex items-center gap-2 text-indigo-300">
                         <MapPin size={14} className="text-indigo-400" />
-                        <span className="text-xs font-bold uppercase tracking-widest">Source: {insights.lastInbound.remarks}</span>
+                        <span className="text-xs font-bold uppercase tracking-widest">Ref: {insights.lastInbound.remarks}</span>
                       </div>
                     )}
                   </div>
@@ -227,8 +232,8 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
 
       <div className="bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm">
         <div className="mb-12">
-          <h3 className="text-xl font-black text-slate-900 mb-1">Stock Concentration</h3>
-          <p className="text-sm text-slate-500 font-medium">Quantity comparison for top 10 products in {selectedBranch}.</p>
+          <h3 className="text-xl font-black text-slate-900 mb-1">Local Stock Concentration</h3>
+          <p className="text-sm text-slate-500 font-medium">Top 10 SKU distribution in {selectedBranch}.</p>
         </div>
         <div className="h-[400px]">
           {insights?.chartData && insights.chartData.length > 0 ? (
@@ -245,8 +250,8 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
       <div className="bg-white border border-slate-200 rounded-[40px] shadow-sm overflow-hidden flex flex-col">
         <div className="p-8 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 text-slate-900">
           <div>
-            <h3 className="text-xl font-black mb-1">SKU Performance Ledger</h3>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Branch Database Audit</p>
+            <h3 className="text-xl font-black mb-1">SKU Audit Log</h3>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Branch Database Access</p>
           </div>
           <div className="relative w-full sm:w-96 group">
             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={20} />
@@ -267,11 +272,11 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
               <tr className="bg-slate-50/50">
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Product / Identifier</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Inbound</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Outbound</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Logistics Detail</th>
-                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Balance</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Product / SKU</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">In</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Out</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Logistics / Source</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Count</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -279,7 +284,7 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
                 <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-10 py-7">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm group-hover:shadow-indigo-500/20">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
                         <Package size={18} />
                       </div>
                       <div>
@@ -304,7 +309,7 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
                         <MapPin size={12} />
                       </div>
                       <span className={`text-[11px] font-bold uppercase tracking-widest ${record.remarks ? 'text-slate-600' : 'text-slate-300 italic'}`}>
-                        {record.remarks || 'Direct Stock'}
+                        {record.remarks || 'Stock Hub'}
                       </span>
                     </div>
                   </td>
@@ -320,15 +325,13 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
                 <tr>
                   <td colSpan={5} className="px-10 py-24 text-center">
                     <div className="flex flex-col items-center gap-6 max-w-sm mx-auto">
-                      <div className="p-8 bg-slate-50 rounded-full text-slate-300 shadow-inner">
+                      <div className="p-8 bg-slate-50 rounded-full text-slate-300">
                         <Search size={48} />
                       </div>
                       <div>
                         <p className="text-slate-900 font-black uppercase tracking-widest mb-2">No Records Detected</p>
                         <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                          Check your Google Sheet for columns named <span className="text-indigo-600 font-bold">"Product"</span>, 
-                          <span className="text-indigo-600 font-bold">"SKU"</span>, or <span className="text-indigo-600 font-bold">"Balance"</span>. 
-                          Also ensure data exists in the <span className="text-slate-900 font-bold">"{selectedBranch}"</span> tab.
+                          Check tab <span className="text-indigo-600 font-bold">"{selectedBranch}"</span> for headers named "Product", "SKU", or "Balance".
                         </p>
                       </div>
                     </div>
@@ -341,7 +344,7 @@ export const Inventory: React.FC<InventoryProps> = ({ data }) => {
 
         <div className="p-8 border-t border-slate-50 bg-slate-50/30 flex items-center justify-between">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-            {filteredTableData.length} total SKUs found
+            {filteredTableData.length} records in this branch
           </p>
           <div className="flex items-center gap-3">
             <button

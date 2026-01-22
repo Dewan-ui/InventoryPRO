@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { InventoryRecord, DailyStats, ProductCategory } from '../types';
 import { StockVelocityChart, Sparkline } from './Charts';
@@ -52,24 +53,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, insights, category, 
     let mainBranchTotal = 0;
 
     data.forEach(item => {
-      // Aggregate Daily Stats
-      const existing = dailyStatsMap.get(item.date) || { date: item.date, stockIn: 0, stockOut: 0, count: 0 };
-      existing.stockIn += item.stockIn;
-      existing.stockOut += item.stockOut;
-      existing.count += item.currentCount;
-      dailyStatsMap.set(item.date, existing);
+      if (!item) return;
+      const dateKey = item.date || 'Unknown';
+      const existing = dailyStatsMap.get(dateKey) || { date: dateKey, stockIn: 0, stockOut: 0, count: 0 };
+      existing.stockIn += item.stockIn || 0;
+      existing.stockOut += item.stockOut || 0;
+      existing.count += item.currentCount || 0;
+      dailyStatsMap.set(dateKey, existing);
 
-      // Aggregate Global Stock
-      globalTotal += item.currentCount;
+      globalTotal += item.currentCount || 0;
 
-      // Aggregate Main Branch Stock
-      const isMain = item.branchName.toLowerCase().includes('main') || item.branchName.toLowerCase().includes('hub');
+      const isMain = (item.branchName || '').toLowerCase().includes('main') || (item.branchName || '').toLowerCase().includes('hub');
       if (isMain) {
-        mainBranchTotal += item.currentCount;
+        mainBranchTotal += item.currentCount || 0;
       }
     });
 
-    const dailyStats = Array.from(dailyStatsMap.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const dailyStats = Array.from(dailyStatsMap.values()).sort((a, b) => {
+      const getTime = (d: string) => {
+        const parsed = new Date(d).getTime();
+        return isNaN(parsed) ? 0 : parsed;
+      };
+      return getTime(a.date) - getTime(b.date);
+    });
     
     return { dailyStats, globalTotal, mainBranchTotal };
   }, [data]);
@@ -78,14 +84,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, insights, category, 
 
   return (
     <div className="space-y-8 lg:space-y-12 animate-in fade-in slide-in-from-bottom-6 duration-1000">
-      {/* Header with Title and Tri-State Toggle */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-1">
         <div className="space-y-1">
           <h2 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900">Dashboard</h2>
-          <p className="text-sm text-slate-500 font-medium">Real-time status of {category === 'both' ? 'complete network' : category.replace('-', ' ')}.</p>
+          <p className="text-sm text-slate-500 font-medium">Network status for {category === 'both' ? 'all categories' : category.replace('-', ' ')}.</p>
         </div>
 
-        {/* Professional White Tri-State Toggle */}
         <div className="bg-white p-1 rounded-2xl flex items-center shadow-sm border border-slate-200 shrink-0 self-start md:self-center">
           {[
             { id: 'power-stations', label: 'Power Stations' },
@@ -109,17 +113,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, insights, category, 
         </div>
       </div>
 
-      {/* Summary KPI Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
         <KPICard 
-          title="Total Stock (Global)" 
+          title="Global Inventory" 
           value={globalTotal.toLocaleString()} 
           trend={12.5} 
           icon={<Globe size={24} />} 
           sparkData={[40, 45, 42, 50, 55, 60, 65]}
         />
         <KPICard 
-          title="Total Stock (Main Branch)" 
+          title="Primary Hub" 
           value={mainBranchTotal.toLocaleString()} 
           trend={-2.4} 
           icon={<Warehouse size={24} />} 
@@ -127,16 +130,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, insights, category, 
         />
       </div>
 
-      {/* AI Strategy Insights */}
       {insights && insights.length > 0 && (
-        <div className="bg-indigo-950 rounded-[40px] p-8 lg:p-10 text-white shadow-2xl shadow-indigo-900/20 border border-indigo-900/50 animate-in fade-in zoom-in-95 duration-700">
+        <div className="bg-indigo-950 rounded-[40px] p-8 lg:p-10 text-white shadow-2xl shadow-indigo-900/20 border border-indigo-900/50">
           <div className="flex items-center gap-3 mb-8">
             <div className="p-3 bg-indigo-600/30 rounded-2xl">
               <Sparkles className="text-indigo-400" size={24} />
             </div>
             <div>
               <h3 className="text-xl font-bold tracking-tight">Strategy Analysis</h3>
-              <p className="text-xs text-indigo-300 font-medium">Data-driven intelligence for {category.replace('-', ' ')}</p>
+              <p className="text-xs text-indigo-300 font-medium">Data-driven intelligence</p>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -149,26 +151,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, insights, category, 
         </div>
       )}
 
-      {/* Time-Series Charts - Spanning full width */}
       <div className="bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-10">
           <div>
-            <h3 className="text-xl font-bold text-slate-900">Inbound vs. Outbound Rate</h3>
-            <p className="text-sm text-slate-500 mt-1">Daily flow of {category === 'both' ? 'all' : category.replace('-', ' ')} inventory units.</p>
+            <h3 className="text-xl font-bold text-slate-900">Inbound vs. Outbound Velocity</h3>
+            <p className="text-sm text-slate-500 mt-1">Movement trends for {category === 'both' ? 'all' : category.replace('-', ' ')} inventory units.</p>
           </div>
           <div className="flex items-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-              Inbound Rate
+              Stock In
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-slate-200"></span>
-              Outbound Rate
+              Stock Out
             </div>
           </div>
         </div>
         <div className="h-[400px]">
-          <StockVelocityChart data={dailyStats.slice(-7)} />
+          <StockVelocityChart data={dailyStats.slice(-14)} />
         </div>
       </div>
     </div>

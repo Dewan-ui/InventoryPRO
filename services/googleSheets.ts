@@ -20,7 +20,7 @@ export const fetchInventoryData = async (options?: {
       const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${queryParams}`;
       
       const metaResponse = await fetch(metaUrl, { headers });
-      if (!metaResponse.ok) throw new Error(`Google API Error ${metaResponse.status}: Ensure your sheet is shared correctly.`);
+      if (!metaResponse.ok) throw new Error(`Access Error: Verify the sheet is shared and your API key is correct.`);
       
       const metaData = await metaResponse.json();
       const allRecords: InventoryRecord[] = [];
@@ -29,14 +29,16 @@ export const fetchInventoryData = async (options?: {
       const sheetNames = metaData.sheets.map((s: any) => s.properties?.title).filter(Boolean);
 
       for (const sheetName of sheetNames) {
-        // Skip non-data sheets
-        if (['summary', 'config', 'dashboard', 'settings', 'instructions'].includes(sheetName.toLowerCase().trim())) continue;
+        // Skip purely informational tabs
+        const normalized = sheetName.toLowerCase().trim();
+        if (['summary', 'config', 'dashboard', 'settings', 'instructions', 'template'].includes(normalized)) continue;
         
         const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/'${sheetName}'!A:Z${queryParams}`;
         const dataResponse = await fetch(dataUrl, { headers });
         if (dataResponse.ok) {
           const data = await dataResponse.json();
-          if (data && data.values && data.values.length > 1) {
+          if (data && data.values && data.values.length > 0) {
+            // Force the branch name to be the literal sheet tab name
             allRecords.push(...transformMatrixToRecords(data.values, sheetName));
           }
         }
@@ -44,7 +46,7 @@ export const fetchInventoryData = async (options?: {
       return allRecords;
     }
 
-    // CSV Fallback (Limited to one tab)
+    // CSV Fallback
     const GID = (import.meta.env.VITE_SHEET_GID || APP_CONFIG.DEFAULT_SHEET_GID).trim();
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
     const response = await fetch(CSV_URL);
@@ -81,49 +83,46 @@ function parseCSV(text: string): string[][] {
 }
 
 function transformMatrixToRecords(rows: string[][], sourceSheet: string): InventoryRecord[] {
-  if (!rows || rows.length < 1) return [];
+  if (!rows || rows.length === 0) return [];
 
-  // 1. Identify Header Row (Look for row containing "Product", "SKU", or "Device")
-  let headerRowIndex = 0;
-  for (let i = 0; i < Math.min(rows.length, 5); i++) {
-    const rowStr = rows[i].join(' ').toLowerCase();
+  // Find the header row (searching for common inventory keywords)
+  let headerRowIndex = -1;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const rowStr = (rows[i] || []).join(' ').toLowerCase();
     if (rowStr.includes('product') || rowStr.includes('sku') || rowStr.includes('device') || rowStr.includes('item')) {
       headerRowIndex = i;
       break;
     }
   }
 
+  // Fallback if no header keyword is found
+  if (headerRowIndex === -1) headerRowIndex = 0;
+
   const headers = rows[headerRowIndex] || [];
   const records: InventoryRecord[] = [];
-  const dateRegex = /(\d{1,2}\/\d{1,2})/; // Simplified to catch MM/DD
+  const dateRegex = /(\d{1,2}\/\d{1,2})/;
 
-  // 2. Smart Column Detection
-  const productIdx = headers.findIndex(h => /product|device|sku|item|name/i.test(h || ''));
-  const remarksIdx = headers.findIndex(h => /remark|source|destination|from|to|recipient|supplier/i.test(h || ''));
+  // Map critical indices
+  const productIdx = headers.findIndex(h => h && /product|device|sku|item|name/i.test(h));
+  const remarksIdx = headers.findIndex(h => h && /remark|source|destination|from|to|recipient|supplier/i.test(h));
 
-  if (productIdx === -1) {
-    console.warn(`Sheet "${sourceSheet}": No Product/SKU column found. Skipping.`);
-    return [];
-  }
+  if (productIdx === -1) return [];
 
-  // 3. Process Data Rows
   for (let i = headerRowIndex + 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || !row[productIdx]) continue;
     
-    const productName = row[productIdx].toString().trim();
-    if (!productName || ['total', 's/n', 'sn'].includes(productName.toLowerCase())) continue;
+    const productName = row[productIdx]?.toString().trim();
+    if (!productName || /total|s\/n|sn/i.test(productName)) continue;
 
     const rowRemarks = (remarksIdx !== -1 && row[remarksIdx]) ? row[remarksIdx].toString() : undefined;
 
-    // Iterate through columns to find data
     for (let j = 0; j < row.length; j++) {
       if (j === productIdx || j === remarksIdx) continue;
 
       const header = (headers[j] || '').toLowerCase();
       const cellValue = row[j];
       
-      // We only care about columns that are dates or movements
       const isDate = dateRegex.test(header);
       const isBalance = /balance|qty|count|stock|on hand/i.test(header);
       const isInbound = /inbound|stock in|received|\+/i.test(header);
@@ -133,11 +132,12 @@ function transformMatrixToRecords(rows: string[][], sourceSheet: string): Invent
       if (cellValue === undefined || cellValue === null || cellValue === '-' || cellValue === '') continue;
 
       const cleanValue = parseInt(cellValue.toString().replace(/[^\d]/g, '')) || 0;
-      const date = header.match(dateRegex) ? header.match(dateRegex)![1] : 'Recent';
+      const dateMatch = (headers[j] || '').match(dateRegex);
+      const date = dateMatch ? dateMatch[1] : 'Recent';
 
       records.push({
         date,
-        branchName: sourceSheet,
+        branchName: sourceSheet, // This ensures tab-to-branch identity
         deviceName: productName,
         stockIn: isInbound ? cleanValue : 0,
         stockOut: isOutbound ? cleanValue : 0,
@@ -148,7 +148,7 @@ function transformMatrixToRecords(rows: string[][], sourceSheet: string): Invent
     }
   }
   
-  // 4. Consolidate groups (By product + date + branch)
+  // Consolidate duplicates in the same sheet (e.g., multiple entries for same product on same date)
   const grouped: Record<string, InventoryRecord> = {};
   records.forEach(r => {
     const key = `${r.date}-${r.branchName}-${r.deviceName}`;
