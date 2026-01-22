@@ -7,83 +7,51 @@ export const fetchInventoryData = async (options?: {
   accessToken?: string;
   usePrivateAPI?: boolean 
 }): Promise<InventoryRecord[]> => {
-  const SHEET_ID = import.meta.env.VITE_SHEET_ID || APP_CONFIG.DEFAULT_SHEET_ID;
-  const GID = import.meta.env.VITE_SHEET_GID || APP_CONFIG.DEFAULT_SHEET_GID;
-  
-  // Resolve API Key from defined process.env or options
+  const SHEET_ID = (import.meta.env.VITE_SHEET_ID || APP_CONFIG.DEFAULT_SHEET_ID).trim();
   const systemApiKey = process.env.API_KEY;
   const effectiveApiKey = options?.apiKey || systemApiKey;
-  
-  // Use v4 API if any credential is provided
   const useV4Api = !!(effectiveApiKey || options?.accessToken);
 
   try {
     if (useV4Api) {
-      const headers: HeadersInit = {
-        'Accept': 'application/json',
-      };
-      
-      if (options?.accessToken) {
-        headers['Authorization'] = `Bearer ${options.accessToken}`;
-      }
-
+      const headers: HeadersInit = { 'Accept': 'application/json' };
+      if (options?.accessToken) headers['Authorization'] = `Bearer ${options.accessToken}`;
       const queryParams = effectiveApiKey ? `?key=${effectiveApiKey}` : '';
       const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}${queryParams}`;
       
       const metaResponse = await fetch(metaUrl, { headers });
-      
-      if (metaResponse.status === 403) {
-        // This is the specific error the user is hitting
-        throw new Error('IDENTITY_MISMATCH: Your API Key is valid, but Google does not know you are the Service Account. For private sheets, you must set access to "Anyone with the link can view" when using an API Key.');
-      }
-      
-      if (metaResponse.status === 401) {
-        throw new Error('UNAUTHORIZED: The API Key or Access Token provided is invalid or has expired.');
-      }
-
-      if (metaResponse.status === 404) {
-        throw new Error(`NOT_FOUND: Spreadsheet ID "${SHEET_ID}" not found. Verify VITE_SHEET_ID in Vercel.`);
-      }
-
-      if (!metaResponse.ok) {
-        const errBody = await metaResponse.json().catch(() => ({}));
-        throw new Error(errBody.error?.message || `Google API Error ${metaResponse.status}`);
-      }
+      if (!metaResponse.ok) throw new Error(`Google API Error ${metaResponse.status}: Ensure your sheet is shared correctly.`);
       
       const metaData = await metaResponse.json();
       const allRecords: InventoryRecord[] = [];
-      const sheetNames = metaData.sheets.map((s: any) => s.properties.title);
+      
+      if (!metaData || !metaData.sheets) return [];
+      const sheetNames = metaData.sheets.map((s: any) => s.properties?.title).filter(Boolean);
 
-      // Batch fetch sheet values for performance
       for (const sheetName of sheetNames) {
-        if (sheetName.toLowerCase().includes('summary') || sheetName.toLowerCase().includes('config')) continue;
-
+        // Skip non-data sheets
+        if (['summary', 'config', 'dashboard', 'settings', 'instructions'].includes(sheetName.toLowerCase().trim())) continue;
+        
         const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/'${sheetName}'!A:Z${queryParams}`;
         const dataResponse = await fetch(dataUrl, { headers });
         if (dataResponse.ok) {
           const data = await dataResponse.json();
-          allRecords.push(...transformMatrixToRecords(data.values, sheetName));
+          if (data && data.values && data.values.length > 1) {
+            allRecords.push(...transformMatrixToRecords(data.values, sheetName));
+          }
         }
       }
       return allRecords;
     }
 
-    // Fallback path: Public CSV export
+    // CSV Fallback (Limited to one tab)
+    const GID = (import.meta.env.VITE_SHEET_GID || APP_CONFIG.DEFAULT_SHEET_GID).trim();
     const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
     const response = await fetch(CSV_URL);
-    
-    if (!response.ok) {
-      throw new Error(`CONNECTION_FAILED: Google returned ${response.status}. Ensure the Sheet is shared correctly.`);
-    }
-    
+    if (!response.ok) throw new Error("CSV Export failed. Is the sheet public?");
     const csvText = await response.text();
-    if (csvText.trim().toLowerCase().startsWith('<!doctype html')) {
-      throw new Error('ACCESS_RESTRICTED: Sheet is private. Change General Access to "Anyone with link" or configure VITE_API_KEY.');
-    }
-
     const rows = parseCSV(csvText);
     return transformMatrixToRecords(rows, 'Main Hub');
-
   } catch (error: any) {
     console.error('Inventory Sync Engine Error:', error.message);
     throw error;
@@ -113,63 +81,86 @@ function parseCSV(text: string): string[][] {
 }
 
 function transformMatrixToRecords(rows: string[][], sourceSheet: string): InventoryRecord[] {
-  if (!rows || rows.length < 2) return [];
+  if (!rows || rows.length < 1) return [];
 
-  const headers = rows[0];
-  const records: InventoryRecord[] = [];
-  const dateRegex = /(\d{1,2}\/\d{1,2}\/\d{2,4})/;
-
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    const productName = row[1];
-    
-    if (!productName || ['products', 's/n', 'total'].includes(productName.toLowerCase().trim())) continue;
-
-    for (let j = 2; j < row.length; j++) {
-      const cellValue = row[j];
-      if (!cellValue || cellValue === '-' || cellValue === '0' || cellValue === '') continue;
-
-      const header = headers[j] || '';
-      const dateMatch = header.match(dateRegex);
-      const date = dateMatch ? dateMatch[1] : 'Recent';
-      
-      const cleanValue = parseInt(cellValue.toString().replace(/[^\d]/g, '')) || 0;
-
-      const isClosingBalance = header.toLowerCase().includes('closing balance');
-      const isInbound = header.toLowerCase().includes('inbound');
-      
-      let branchName = header.replace(dateRegex, '').replace(/[()]/g, '').trim();
-      if (!branchName || branchName === '') branchName = sourceSheet;
-
-      if (isClosingBalance) {
-        records.push({
-          date,
-          branchName: sourceSheet,
-          deviceName: productName,
-          stockIn: 0,
-          stockOut: 0,
-          currentCount: cleanValue
-        });
-      } else if (isInbound) {
-        records.push({
-          date,
-          branchName: 'Logistics/Central',
-          deviceName: productName,
-          stockIn: cleanValue,
-          stockOut: 0,
-          currentCount: 0
-        });
-      } else {
-        records.push({
-          date,
-          branchName: branchName,
-          deviceName: productName,
-          stockIn: cleanValue,
-          stockOut: 0,
-          currentCount: cleanValue
-        });
-      }
+  // 1. Identify Header Row (Look for row containing "Product", "SKU", or "Device")
+  let headerRowIndex = 0;
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    const rowStr = rows[i].join(' ').toLowerCase();
+    if (rowStr.includes('product') || rowStr.includes('sku') || rowStr.includes('device') || rowStr.includes('item')) {
+      headerRowIndex = i;
+      break;
     }
   }
-  return records;
+
+  const headers = rows[headerRowIndex] || [];
+  const records: InventoryRecord[] = [];
+  const dateRegex = /(\d{1,2}\/\d{1,2})/; // Simplified to catch MM/DD
+
+  // 2. Smart Column Detection
+  const productIdx = headers.findIndex(h => /product|device|sku|item|name/i.test(h || ''));
+  const remarksIdx = headers.findIndex(h => /remark|source|destination|from|to|recipient|supplier/i.test(h || ''));
+
+  if (productIdx === -1) {
+    console.warn(`Sheet "${sourceSheet}": No Product/SKU column found. Skipping.`);
+    return [];
+  }
+
+  // 3. Process Data Rows
+  for (let i = headerRowIndex + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row[productIdx]) continue;
+    
+    const productName = row[productIdx].toString().trim();
+    if (!productName || ['total', 's/n', 'sn'].includes(productName.toLowerCase())) continue;
+
+    const rowRemarks = (remarksIdx !== -1 && row[remarksIdx]) ? row[remarksIdx].toString() : undefined;
+
+    // Iterate through columns to find data
+    for (let j = 0; j < row.length; j++) {
+      if (j === productIdx || j === remarksIdx) continue;
+
+      const header = (headers[j] || '').toLowerCase();
+      const cellValue = row[j];
+      
+      // We only care about columns that are dates or movements
+      const isDate = dateRegex.test(header);
+      const isBalance = /balance|qty|count|stock|on hand/i.test(header);
+      const isInbound = /inbound|stock in|received|\+/i.test(header);
+      const isOutbound = /outbound|stock out|issued|sold|-/i.test(header);
+
+      if (!isDate && !isBalance && !isInbound && !isOutbound) continue;
+      if (cellValue === undefined || cellValue === null || cellValue === '-' || cellValue === '') continue;
+
+      const cleanValue = parseInt(cellValue.toString().replace(/[^\d]/g, '')) || 0;
+      const date = header.match(dateRegex) ? header.match(dateRegex)![1] : 'Recent';
+
+      records.push({
+        date,
+        branchName: sourceSheet,
+        deviceName: productName,
+        stockIn: isInbound ? cleanValue : 0,
+        stockOut: isOutbound ? cleanValue : 0,
+        currentCount: isBalance ? cleanValue : 0,
+        remarks: rowRemarks,
+        category: productName.toLowerCase().includes('station') ? 'power-station' : 'accessory'
+      });
+    }
+  }
+  
+  // 4. Consolidate groups (By product + date + branch)
+  const grouped: Record<string, InventoryRecord> = {};
+  records.forEach(r => {
+    const key = `${r.date}-${r.branchName}-${r.deviceName}`;
+    if (!grouped[key]) {
+      grouped[key] = { ...r };
+    } else {
+      grouped[key].stockIn += r.stockIn;
+      grouped[key].stockOut += r.stockOut;
+      if (r.remarks) grouped[key].remarks = r.remarks;
+      if (r.currentCount > 0) grouped[key].currentCount = r.currentCount;
+    }
+  });
+
+  return Object.values(grouped);
 }

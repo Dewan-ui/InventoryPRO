@@ -1,3 +1,4 @@
+export type ProductCategory = 'power-stations' | 'accessories' | 'both';
 
 export interface InventoryRecord {
   date: string;
@@ -6,6 +7,8 @@ export interface InventoryRecord {
   stockIn: number;
   stockOut: number;
   currentCount: number;
+  remarks?: string; // Captured from "Source", "Destination", or "Remarks" columns
+  category?: 'power-station' | 'accessory'; // Derived during processing
 }
 
 export interface BranchInventory {
@@ -24,4 +27,4 @@ export interface DailyStats {
   count: number;
 }
 
-export type ViewType = 'dashboard' | 'inventory' | 'metrics' | 'settings';
+export type ViewType = 'dashboard' | 'branches' | 'metrics' | 'settings';

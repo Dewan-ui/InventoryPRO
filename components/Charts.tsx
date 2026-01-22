@@ -91,6 +91,46 @@ export const MetricsBarChart: React.FC<{ data: any[] }> = ({ data }) => {
   );
 };
 
+export const BranchStockChart: React.FC<{ data: any[] }> = ({ data }) => {
+  return (
+    <div className="h-[300px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
+          <XAxis 
+            dataKey="name" 
+            axisLine={false} 
+            tickLine={false} 
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            interval={0}
+            angle={-25}
+            textAnchor="end"
+          />
+          <YAxis 
+            axisLine={false} 
+            tickLine={false} 
+            tick={{ fontSize: 10, fill: '#64748b' }}
+          />
+          <Tooltip 
+            cursor={{ fill: '#f8fafc' }}
+            contentStyle={{ 
+              borderRadius: '16px', 
+              border: 'none', 
+              boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+              fontSize: '11px'
+            }}
+          />
+          <Bar 
+            dataKey="qty" 
+            fill="#4f46e5" 
+            radius={[6, 6, 0, 0]} 
+            barSize={40}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
 export const Sparkline: React.FC<{ data: number[], color?: string }> = ({ data, color = "#4f46e5" }) => {
   const chartData = data.map((val, i) => ({ val, i }));
   return (

@@ -1,7 +1,20 @@
 
-import React, { useState, useMemo } from 'react';
-import { InventoryRecord, BranchInventory } from '../types';
-import { Search, Filter, MoreHorizontal, ArrowRight } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { InventoryRecord } from '../types';
+import { BranchStockChart } from './Charts';
+import { 
+  Search, 
+  MoreVertical, 
+  Package, 
+  Truck,
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  Clock,
+  ArrowRight,
+  MapPin,
+  AlertCircle
+} from 'lucide-react';
 
 interface InventoryProps {
   data: InventoryRecord[];
@@ -9,139 +22,343 @@ interface InventoryProps {
 
 export const Inventory: React.FC<InventoryProps> = ({ data }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedBranch, setExpandedBranch] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const itemsPerPage = 10;
+
+  // Defensive data extraction
+  const safeData = useMemo(() => data || [], [data]);
 
   const branches = useMemo(() => {
-    const branchMap = new Map<string, BranchInventory>();
+    const b = [...new Set(safeData.map(d => d.branchName))].filter(Boolean);
+    return b.length > 0 ? b : ['Main Hub'];
+  }, [safeData]);
+
+  const [selectedBranch, setSelectedBranch] = useState(branches[0]);
+
+  useEffect(() => {
+    if (!branches.includes(selectedBranch)) {
+      setSelectedBranch(branches[0]);
+    }
+  }, [branches, selectedBranch]);
+
+  const branchData = useMemo(() => {
+    return safeData.filter(record => record.branchName === selectedBranch);
+  }, [safeData, selectedBranch]);
+
+  const insights = useMemo(() => {
+    if (branchData.length === 0) return null;
+
+    const sortedByCount = [...branchData].sort((a, b) => b.currentCount - a.currentCount);
+    const highestStock = sortedByCount[0];
     
-    data.forEach(record => {
-      const existing = branchMap.get(record.branchName) || {
-        branchName: record.branchName,
-        totalItems: 0,
-        totalStockIn: 0,
-        totalStockOut: 0,
-        avgRetention: 0,
-        items: {}
-      };
+    const inbounds = branchData.filter(d => d.stockIn > 0)
+      .sort((a, b) => {
+        const timeA = new Date(a.date).getTime();
+        const timeB = new Date(b.date).getTime();
+        return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+      });
+    const lastInbound = inbounds[0];
 
-      existing.totalItems += record.currentCount;
-      existing.totalStockIn += record.stockIn;
-      existing.totalStockOut += record.stockOut;
-      existing.items[record.deviceName] = (existing.items[record.deviceName] || 0) + record.currentCount;
-      
-      branchMap.set(record.branchName, existing);
+    const skuMap = new Map<string, number>();
+    branchData.forEach(item => {
+      if (item.deviceName) {
+        skuMap.set(item.deviceName, (skuMap.get(item.deviceName) || 0) + item.currentCount);
+      }
     });
+    
+    const chartData = Array.from(skuMap.entries())
+      .map(([name, qty]) => ({ name: name.split(' ')[0], full: name, qty }))
+      .filter(item => item.qty > 0)
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 10);
 
-    return Array.from(branchMap.values()).filter(b => 
-      b.branchName.toLowerCase().includes(searchTerm.toLowerCase())
+    return { highestStock, lastInbound, chartData };
+  }, [branchData]);
+
+  const filteredTableData = useMemo(() => {
+    const uniqueSKUs: Record<string, InventoryRecord> = {};
+    branchData.forEach(record => {
+      if (record.deviceName) {
+        if (!uniqueSKUs[record.deviceName] || record.currentCount > uniqueSKUs[record.deviceName].currentCount) {
+          uniqueSKUs[record.deviceName] = record;
+        }
+      }
+    });
+    
+    return Object.values(uniqueSKUs).filter(record => 
+      record.deviceName?.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [data, searchTerm]);
+  }, [branchData, searchTerm]);
+
+  const totalPages = Math.ceil(filteredTableData.length / itemsPerPage);
+  const paginatedData = filteredTableData.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 px-1">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-1000">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-1 relative">
         <div>
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">Branch Inventory</h2>
-          <p className="text-sm md:text-base text-slate-500">View stock levels for each branch.</p>
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">{selectedBranch}</h2>
+          <p className="text-sm text-slate-500 font-medium">Branch operations and local SKU inventory allocation.</p>
         </div>
         
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
-          <div className="relative w-full sm:w-80 group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={18} />
-            <input 
-              type="text" 
-              placeholder="Search branches..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-[20px] text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 transition-all outline-none shadow-sm"
-            />
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <button 
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm active:scale-95 group"
+            >
+              <MoreVertical size={24} className="group-hover:rotate-90 transition-transform duration-300" />
+            </button>
+            
+            {isMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsMenuOpen(false)} />
+                <div className="absolute right-0 mt-3 w-64 bg-white border border-slate-200 rounded-[28px] shadow-2xl z-50 animate-in fade-in zoom-in-95 p-2 origin-top-right">
+                  <div className="p-4 border-b border-slate-50">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select Location</p>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto p-2 space-y-1">
+                    {branches.map(branch => (
+                      <button
+                        key={branch}
+                        onClick={() => {
+                          setSelectedBranch(branch);
+                          setIsMenuOpen(false);
+                          setCurrentPage(1);
+                        }}
+                        className={`w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
+                          selectedBranch === branch 
+                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
+                            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        }`}
+                      >
+                        {branch}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-          <button className="hidden sm:flex p-3.5 border border-slate-200 bg-white rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-sm active:scale-95">
-            <Filter size={20} />
-          </button>
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+        <div className="bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm relative overflow-hidden group hover:shadow-xl transition-all duration-500 min-h-[220px]">
+          <div className="absolute -top-6 -right-6 p-8 text-indigo-50/20 group-hover:text-indigo-100/30 transition-colors">
+            <TrendingUp size={160} />
+          </div>
+          <div className="relative z-10">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="p-4 bg-indigo-50 text-indigo-600 rounded-3xl">
+                <Package size={28} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Peak Allocation</p>
+                <h4 className="text-sm font-bold text-slate-900">Highest Inventory SKU</h4>
+              </div>
+            </div>
+            
+            <h3 className="text-2xl font-black text-slate-900 mb-4 truncate pr-12">
+              {insights?.highestStock?.deviceName || 'Data Sync Required'}
+            </h3>
+            
+            <div className="flex items-baseline gap-3">
+              <span className="text-6xl font-black text-indigo-600 tracking-tighter">
+                {insights?.highestStock?.currentCount?.toLocaleString() || '0'}
+              </span>
+              <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">Units Available</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-[40px] p-8 lg:p-10 shadow-sm relative overflow-hidden group hover:shadow-2xl transition-all duration-500 min-h-[220px]">
+          <div className="absolute -top-6 -right-6 p-8 text-white/5 group-hover:text-white/10 transition-colors">
+            <Clock size={160} />
+          </div>
+          <div className="relative z-10 text-white">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="p-4 bg-white/10 text-white rounded-3xl">
+                <Truck size={28} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Logistics Update</p>
+                <h4 className="text-sm font-bold text-indigo-100">Last Stock Injection</h4>
+              </div>
+            </div>
+
+            {insights?.lastInbound ? (
+              <>
+                <h3 className="text-2xl font-black mb-2 truncate pr-12 text-white">
+                  {insights.lastInbound.deviceName}
+                </h3>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-5xl font-black text-white tracking-tighter">
+                      +{insights.lastInbound.stockIn?.toLocaleString() || '0'}
+                    </span>
+                    <span className="text-sm font-bold text-indigo-300">Units Received</span>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 py-2 px-4 bg-white/5 rounded-2xl w-fit border border-white/5">
+                      <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">Confirmed: {insights.lastInbound.date}</span>
+                    </div>
+                    {insights.lastInbound.remarks && (
+                      <div className="flex items-center gap-2 text-indigo-300">
+                        <MapPin size={14} className="text-indigo-400" />
+                        <span className="text-xs font-bold uppercase tracking-widest">Source: {insights.lastInbound.remarks}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="py-10">
+                <p className="text-slate-500 italic font-medium">No recent inbound activity detected.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm">
+        <div className="mb-12">
+          <h3 className="text-xl font-black text-slate-900 mb-1">Stock Concentration</h3>
+          <p className="text-sm text-slate-500 font-medium">Quantity comparison for top 10 products in {selectedBranch}.</p>
+        </div>
+        <div className="h-[400px]">
+          {insights?.chartData && insights.chartData.length > 0 ? (
+            <BranchStockChart data={insights.chartData} />
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-4">
+               <AlertCircle size={32} className="opacity-20" />
+               <p className="text-sm italic">Insufficient data for concentration analysis.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-[40px] shadow-sm overflow-hidden flex flex-col">
+        <div className="p-8 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 text-slate-900">
+          <div>
+            <h3 className="text-xl font-black mb-1">SKU Performance Ledger</h3>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Branch Database Audit</p>
+          </div>
+          <div className="relative w-full sm:w-96 group">
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={20} />
+            <input 
+              type="text" 
+              placeholder="Search by SKU..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full pl-14 pr-6 py-4 bg-slate-50 border border-transparent rounded-2xl text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 focus:bg-white transition-all outline-none font-medium text-slate-900"
+            />
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[700px]">
+          <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
-              <tr className="border-b border-slate-50 bg-slate-50/50">
-                <th className="px-6 md:px-8 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] w-12"></th>
-                <th className="px-4 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Branch Name</th>
-                <th className="px-4 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Current Stock</th>
-                <th className="px-4 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Total In</th>
-                <th className="px-4 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Status</th>
-                <th className="px-4 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] text-right pr-8">Actions</th>
+              <tr className="bg-slate-50/50">
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Product / Identifier</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Inbound</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Outbound</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">Logistics Detail</th>
+                <th className="px-10 py-6 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Balance</th>
               </tr>
             </thead>
-            <tbody>
-              {branches.map((branch) => (
-                <React.Fragment key={branch.branchName}>
-                  <tr 
-                    className={`hover:bg-slate-50 transition-colors cursor-pointer group ${expandedBranch === branch.branchName ? 'bg-indigo-50/20' : ''}`}
-                    onClick={() => setExpandedBranch(expandedBranch === branch.branchName ? null : branch.branchName)}
-                  >
-                    <td className="px-6 md:px-8 py-6">
-                      <div className={`transition-transform duration-300 ${expandedBranch === branch.branchName ? 'rotate-90' : ''}`}>
-                        <ArrowRight size={18} className={expandedBranch === branch.branchName ? 'text-indigo-600' : 'text-slate-300'} />
+            <tbody className="divide-y divide-slate-50">
+              {paginatedData.map((record, idx) => (
+                <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-10 py-7">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm group-hover:shadow-indigo-500/20">
+                        <Package size={18} />
                       </div>
-                    </td>
-                    <td className="px-4 py-6">
-                      <p className="font-bold text-slate-900">{branch.branchName}</p>
-                    </td>
-                    <td className="px-4 py-6">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-700">{branch.totalItems}</span>
-                        <span className="text-[10px] text-slate-400 font-medium tracking-tight">items</span>
+                      <div>
+                        <p className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{record.deviceName || 'Unknown SKU'}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{record.date}</p>
                       </div>
-                    </td>
-                    <td className="px-4 py-6">
-                      <span className="text-sm font-bold text-emerald-600">+{branch.totalStockIn}</span>
-                    </td>
-                    <td className="px-4 py-6">
-                      <span className={`px-3 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-[0.15em] ${
-                        branch.totalItems > 100 
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                          : 'bg-rose-50 text-rose-700 border border-rose-100'
-                      }`}>
-                        {branch.totalItems > 100 ? 'Good' : 'Low'}
+                    </div>
+                  </td>
+                  <td className="px-10 py-7 text-center">
+                    <span className={`text-sm font-bold ${record.stockIn > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
+                      {record.stockIn > 0 ? `+${record.stockIn}` : '0'}
+                    </span>
+                  </td>
+                  <td className="px-10 py-7 text-center">
+                    <span className={`text-sm font-bold ${record.stockOut > 0 ? 'text-rose-600' : 'text-slate-300'}`}>
+                      {record.stockOut > 0 ? `-${record.stockOut}` : '0'}
+                    </span>
+                  </td>
+                  <td className="px-10 py-7">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1.5 rounded-lg ${record.remarks ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-50 text-slate-300'}`}>
+                        <MapPin size={12} />
+                      </div>
+                      <span className={`text-[11px] font-bold uppercase tracking-widest ${record.remarks ? 'text-slate-600' : 'text-slate-300 italic'}`}>
+                        {record.remarks || 'Direct Stock'}
                       </span>
-                    </td>
-                    <td className="px-4 py-6 text-right pr-8">
-                      <button className="p-2 hover:bg-white rounded-xl transition-all text-slate-400 hover:text-slate-900 active:scale-90">
-                        <MoreHorizontal size={20} />
-                      </button>
-                    </td>
-                  </tr>
-                  {expandedBranch === branch.branchName && (
-                    <tr>
-                      <td colSpan={6} className="px-4 sm:px-12 py-8 bg-slate-50/30 border-y border-slate-50">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                          {Object.entries(branch.items).map(([name, count]) => (
-                            <div key={name} className="bg-white p-5 rounded-[24px] border border-slate-200 shadow-sm group hover:border-indigo-400 hover:shadow-xl hover:shadow-indigo-500/5 transition-all duration-300">
-                              <p className="text-[9px] text-slate-400 uppercase font-bold tracking-[0.2em] mb-1">Product</p>
-                              <p className="text-sm font-bold text-slate-900 mb-4 line-clamp-1">{name}</p>
-                              <div className="flex items-end justify-between mb-4">
-                                <span className="text-2xl font-black text-indigo-600 tracking-tighter">{count}</span>
-                                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mb-1.5">Stock</span>
-                              </div>
-                              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-indigo-500 rounded-full transition-all duration-1000" 
-                                  style={{ width: `${Math.min(((count as number) / 60) * 100, 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
+                    </div>
+                  </td>
+                  <td className="px-10 py-7 text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      <span className="text-xl font-black text-slate-900 tracking-tight">{(record.currentCount || 0).toLocaleString()}</span>
+                      <ArrowRight size={14} className="text-slate-200" />
+                    </div>
+                  </td>
+                </tr>
               ))}
+              {paginatedData.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-10 py-24 text-center">
+                    <div className="flex flex-col items-center gap-6 max-w-sm mx-auto">
+                      <div className="p-8 bg-slate-50 rounded-full text-slate-300 shadow-inner">
+                        <Search size={48} />
+                      </div>
+                      <div>
+                        <p className="text-slate-900 font-black uppercase tracking-widest mb-2">No Records Detected</p>
+                        <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                          Check your Google Sheet for columns named <span className="text-indigo-600 font-bold">"Product"</span>, 
+                          <span className="text-indigo-600 font-bold">"SKU"</span>, or <span className="text-indigo-600 font-bold">"Balance"</span>. 
+                          Also ensure data exists in the <span className="text-slate-900 font-bold">"{selectedBranch}"</span> tab.
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+        </div>
+
+        <div className="p-8 border-t border-slate-50 bg-slate-50/30 flex items-center justify-between">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+            {filteredTableData.length} total SKUs found
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="flex items-center gap-2 px-5 py-3 border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 hover:border-indigo-200 disabled:opacity-30 disabled:pointer-events-none transition-all bg-white"
+            >
+              <ChevronLeft size={16} /> Prev
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages || totalPages === 0}
+              className="flex items-center gap-2 px-5 py-3 border border-slate-200 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 hover:border-indigo-200 disabled:opacity-30 disabled:pointer-events-none transition-all bg-white"
+            >
+              Next <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

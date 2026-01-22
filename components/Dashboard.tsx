@@ -1,19 +1,19 @@
-import React from 'react';
-import { InventoryRecord, DailyStats } from '../types';
+import React, { useMemo } from 'react';
+import { InventoryRecord, DailyStats, ProductCategory } from '../types';
 import { StockVelocityChart, Sparkline } from './Charts';
 import { 
   ArrowUpRight, 
   ArrowDownRight, 
-  Package, 
-  MapPin, 
-  AlertTriangle, 
-  RefreshCw,
-  Sparkles
+  Sparkles,
+  Warehouse,
+  Globe
 } from 'lucide-react';
 
 interface DashboardProps {
   data: InventoryRecord[];
   insights?: string[] | null;
+  category: ProductCategory;
+  onCategoryChange: (category: ProductCategory) => void;
 }
 
 const KPICard: React.FC<{ 
@@ -23,9 +23,9 @@ const KPICard: React.FC<{
   icon: React.ReactNode; 
   sparkData: number[];
 }> = ({ title, value, trend, icon, sparkData }) => (
-  <div className="group bg-white border border-slate-200 rounded-[32px] p-6 lg:p-8 shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-500">
+  <div className="group bg-white border border-slate-200 rounded-[32px] p-6 lg:p-8 shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 text-slate-900">
     <div className="flex justify-between items-start mb-6">
-      <div className="p-3 bg-slate-50 rounded-2xl text-slate-600 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300">
+      <div className="p-3 rounded-2xl transition-all duration-300 bg-slate-50 text-slate-600 group-hover:bg-indigo-600 group-hover:text-white">
         {icon}
       </div>
       <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-500">
@@ -33,9 +33,9 @@ const KPICard: React.FC<{
       </div>
     </div>
     <div>
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2">{title}</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.2em] mb-2 text-slate-400">{title}</p>
       <div className="flex items-baseline gap-3 flex-wrap">
-        <h3 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">{value}</h3>
+        <h3 className="text-2xl lg:text-3xl font-bold tracking-tight">{value}</h3>
         <span className={`text-xs font-bold flex items-center gap-1 ${trend > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
           {trend > 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
           {Math.abs(trend)}%
@@ -45,51 +45,89 @@ const KPICard: React.FC<{
   </div>
 );
 
-export const Dashboard: React.FC<DashboardProps> = ({ data, insights }) => {
-  const dailyStatsMap = new Map<string, DailyStats>();
-  data.forEach(item => {
-    const existing = dailyStatsMap.get(item.date) || { date: item.date, stockIn: 0, stockOut: 0, count: 0 };
-    existing.stockIn += item.stockIn;
-    existing.stockOut += item.stockOut;
-    existing.count += item.currentCount;
-    dailyStatsMap.set(item.date, existing);
-  });
+export const Dashboard: React.FC<DashboardProps> = ({ data, insights, category, onCategoryChange }) => {
+  const calculations = useMemo(() => {
+    const dailyStatsMap = new Map<string, DailyStats>();
+    let globalTotal = 0;
+    let mainBranchTotal = 0;
 
-  const dailyStats = Array.from(dailyStatsMap.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  const totalItems = data.reduce((acc, curr) => acc + curr.currentCount, 0);
-  const branchInflows = data.reduce((acc, curr) => {
-    acc[curr.branchName] = (acc[curr.branchName] || 0) + curr.stockOut;
-    return acc;
-  }, {} as Record<string, number>);
-  const topBranch = Object.entries(branchInflows).sort((a, b) => (b[1] as number) - (a[1] as number))[0]?.[0] || 'Main Hub';
+    data.forEach(item => {
+      // Aggregate Daily Stats
+      const existing = dailyStatsMap.get(item.date) || { date: item.date, stockIn: 0, stockOut: 0, count: 0 };
+      existing.stockIn += item.stockIn;
+      existing.stockOut += item.stockOut;
+      existing.count += item.currentCount;
+      dailyStatsMap.set(item.date, existing);
+
+      // Aggregate Global Stock
+      globalTotal += item.currentCount;
+
+      // Aggregate Main Branch Stock
+      const isMain = item.branchName.toLowerCase().includes('main') || item.branchName.toLowerCase().includes('hub');
+      if (isMain) {
+        mainBranchTotal += item.currentCount;
+      }
+    });
+
+    const dailyStats = Array.from(dailyStatsMap.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    return { dailyStats, globalTotal, mainBranchTotal };
+  }, [data]);
+
+  const { dailyStats, globalTotal, mainBranchTotal } = calculations;
 
   return (
     <div className="space-y-8 lg:space-y-12 animate-in fade-in slide-in-from-bottom-6 duration-1000">
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-8">
-        <div className="space-y-2">
-          <h2 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900">Inventory Dashboard</h2>
-          <p className="text-slate-500 font-medium">Overview of stock levels and movement.</p>
+      {/* Header with Title and Tri-State Toggle */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-1">
+        <div className="space-y-1">
+          <h2 className="text-3xl lg:text-4xl font-extrabold tracking-tight text-slate-900">Dashboard</h2>
+          <p className="text-sm text-slate-500 font-medium">Real-time status of {category === 'both' ? 'complete network' : category.replace('-', ' ')}.</p>
+        </div>
+
+        {/* Professional White Tri-State Toggle */}
+        <div className="bg-white p-1 rounded-2xl flex items-center shadow-sm border border-slate-200 shrink-0 self-start md:self-center">
+          {[
+            { id: 'power-stations', label: 'Power Stations' },
+            { id: 'accessories', label: 'Accessories' },
+            { id: 'both', label: 'Both' }
+          ].map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => onCategoryChange(cat.id as ProductCategory)}
+              className={`
+                px-5 py-2.5 rounded-[14px] text-[11px] font-bold transition-all duration-300 whitespace-nowrap
+                ${category === cat.id 
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' 
+                  : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                }
+              `}
+            >
+              {cat.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 max-w-5xl">
+      {/* Summary KPI Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
         <KPICard 
-          title="Total Stock" 
-          value={totalItems.toLocaleString()} 
-          trend={-2.4} 
-          icon={<Package size={24} />} 
-          sparkData={[50, 48, 52, 45, 42, 40, 38]}
+          title="Total Stock (Global)" 
+          value={globalTotal.toLocaleString()} 
+          trend={12.5} 
+          icon={<Globe size={24} />} 
+          sparkData={[40, 45, 42, 50, 55, 60, 65]}
         />
         <KPICard 
-          title="Top Branch" 
-          value={topBranch.split(' ')[0]} 
-          trend={8.9} 
-          icon={<MapPin size={24} />} 
-          sparkData={[20, 25, 40, 35, 50, 55, 60]}
+          title="Total Stock (Main Branch)" 
+          value={mainBranchTotal.toLocaleString()} 
+          trend={-2.4} 
+          icon={<Warehouse size={24} />} 
+          sparkData={[60, 58, 55, 52, 50, 48, 47]}
         />
       </div>
 
-      {/* AI Powered Insights Section */}
+      {/* AI Strategy Insights */}
       {insights && insights.length > 0 && (
         <div className="bg-indigo-950 rounded-[40px] p-8 lg:p-10 text-white shadow-2xl shadow-indigo-900/20 border border-indigo-900/50 animate-in fade-in zoom-in-95 duration-700">
           <div className="flex items-center gap-3 mb-8">
@@ -97,8 +135,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, insights }) => {
               <Sparkles className="text-indigo-400" size={24} />
             </div>
             <div>
-              <h3 className="text-xl font-bold tracking-tight">AI-Powered Insights</h3>
-              <p className="text-xs text-indigo-300 font-medium">Real-time analysis by Gemini Pro</p>
+              <h3 className="text-xl font-bold tracking-tight">Strategy Analysis</h3>
+              <p className="text-xs text-indigo-300 font-medium">Data-driven intelligence for {category.replace('-', ' ')}</p>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -111,60 +149,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, insights }) => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
-        <div className="xl:col-span-2 bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-10">
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">Stock Trends</h3>
-              <p className="text-sm text-slate-500 mt-1">Movement over the last 7 days.</p>
-            </div>
-            <div className="flex items-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-                Inbound
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-slate-200"></span>
-                Outbound
-              </div>
-            </div>
+      {/* Time-Series Charts - Spanning full width */}
+      <div className="bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-10">
+          <div>
+            <h3 className="text-xl font-bold text-slate-900">Inbound vs. Outbound Rate</h3>
+            <p className="text-sm text-slate-500 mt-1">Daily flow of {category === 'both' ? 'all' : category.replace('-', ' ')} inventory units.</p>
           </div>
-          <div className="h-[350px]">
-            <StockVelocityChart data={dailyStats.slice(-7)} />
+          <div className="flex items-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+              Inbound Rate
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-200"></span>
+              Outbound Rate
+            </div>
           </div>
         </div>
-
-        <div className="bg-white border border-slate-200 rounded-[40px] p-8 lg:p-10 shadow-sm flex flex-col">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="text-xl font-bold text-slate-900">Alerts</h3>
-          </div>
-          <div className="space-y-4 flex-1">
-            {[
-              { label: 'High Outflow', branch: 'Retail Hub', time: 'Just now', type: 'warning', icon: <ArrowUpRight size={16} /> },
-              { label: 'Low Stock', branch: 'Dist. Center', time: '18m ago', type: 'error', icon: <AlertTriangle size={16} /> },
-              { label: 'Sync Status', branch: 'Database', time: '2h ago', type: 'success', icon: <RefreshCw size={16} /> },
-            ].map((alert, idx) => (
-              <div key={idx} className="flex gap-4 p-5 rounded-3xl bg-slate-50/50 border border-slate-100 hover:border-indigo-100 hover:bg-white transition-all duration-300 cursor-pointer group">
-                <div className={`p-2.5 rounded-2xl h-fit shrink-0 transition-colors ${
-                  alert.type === 'error' ? 'bg-rose-100 text-rose-600' : 
-                  alert.type === 'warning' ? 'bg-amber-100 text-amber-600' : 
-                  'bg-emerald-100 text-emerald-600'
-                }`}>
-                  {alert.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start mb-1">
-                    <p className="text-sm font-bold text-slate-900 truncate">{alert.label}</p>
-                    <span className="text-[9px] text-slate-400 whitespace-nowrap">{alert.time}</span>
-                  </div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{alert.branch}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button className="mt-8 w-full py-4 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 hover:text-white hover:bg-slate-900 rounded-2xl transition-all duration-300 border border-dashed border-slate-200 hover:border-slate-900 active:scale-95">
-            View All Notifications
-          </button>
+        <div className="h-[400px]">
+          <StockVelocityChart data={dailyStats.slice(-7)} />
         </div>
       </div>
     </div>
